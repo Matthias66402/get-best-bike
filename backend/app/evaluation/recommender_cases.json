@@ -1,0 +1,46 @@
+{
+  "description": "Feste Anfragen an den Fahrradberater für python -m app.evaluation.recommender. expected_output: final_recommendation oder ask_user; category/electric/budget_eur/frame_size werden für die Rangliste geprüft.",
+  "cases": [
+    {
+      "id": "pendler-ebike",
+      "message": "Ich suche ein Trekking-E-Bike bis 3.500 € zum täglichen Pendeln, 15 km pro Strecke, teils Schotter. Ich bin 1,75 m groß, Schrittlänge 82 cm.",
+      "expected_output": "final_recommendation",
+      "category": ["trekking", "city"],
+      "electric": true,
+      "budget_eur": 3500,
+      "frame_size": true
+    },
+    {
+      "id": "gravel-ohne-motor",
+      "message": "Gravelbike ohne Motor bis 2.000 € für Feierabendrunden und gelegentliches Bikepacking. Körpergröße 1,82 m.",
+      "expected_output": "final_recommendation",
+      "category": ["gravel"],
+      "electric": false,
+      "budget_eur": 2000,
+      "frame_size": true
+    },
+    {
+      "id": "kinderrad",
+      "message": "Ein leichtes Kinderrad für meine Tochter, sie ist 118 cm groß. Maximal 500 €.",
+      "expected_output": "final_recommendation",
+      "category": ["kids"],
+      "electric": false,
+      "budget_eur": 500,
+      "frame_size": true
+    },
+    {
+      "id": "lastenrad",
+      "message": "Wir suchen ein E-Lastenrad für zwei kleine Kinder als Autoersatz, wohnen hügelig, Budget 6.000 €.",
+      "expected_output": "final_recommendation",
+      "category": ["cargo"],
+      "electric": true,
+      "budget_eur": 6000,
+      "frame_size": false
+    },
+    {
+      "id": "unvollstaendig",
+      "message": "Ich brauche ein neues Fahrrad.",
+      "expected_output": "ask_user"
+    }
+  ]
+}

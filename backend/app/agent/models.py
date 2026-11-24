@@ -1,0 +1,39 @@
+"""Modell und Modelleinstellungen für die Agenten (Berater, Recherche-Agent, Relevanzprüfung)."""
+
+from pydantic_ai.models import Model
+from pydantic_ai.profiles.openai import openai_model_profile
+from pydantic_ai.settings import ModelSettings
+
+from app.agent.rate_limit import RateLimitedModel, shared_budget
+
+# Ausgaben im strict-Modus: Ohne Constrained Decoding hängt gpt-5-mini gelegentlich zehntausende Leerzeichen an
+# die JSON-Argumente an und braucht dafür Minuten. Das Tokenlimit fängt solche Ausreißer zusätzlich ab
+# (eine Rangliste inkl. Reasoning braucht 2.000-5.000 Tokens, Runden mit vielen Tool-Aufrufen bis zu 6.000).
+# Der Wert zählt bei OpenAI voll zum Token-Limit je Minute (siehe app.agent.rate_limit); 20.000 wie im
+# Abenteuerplaner ließen bei 100.000 Tokens/Minute nur 3-4 Anfragen zu.
+MAX_OUTPUT_TOKENS = 8_000
+# Timeout je Anfrage (s). Beim Streaming gilt er für die Pause zwischen zwei Datenpaketen, bricht also nur eine
+# stehende Verbindung ab, keine lange, aber laufende Antwort; das SDK wiederholt die Anfrage dann. Ohne Angabe wartet
+# das OpenAI-SDK bis zu 600 s je Versuch, ein Chat-Durchlauf hinge damit bis zu einer halben Stunde.
+REQUEST_TIMEOUT_SECONDS = 120.0
+
+
+def model_settings(model: str, reasoning_effort: str = "") -> ModelSettings:
+    settings: ModelSettings = {"max_tokens": MAX_OUTPUT_TOKENS, "timeout": REQUEST_TIMEOUT_SECONDS}
+    provider, _, name = model.partition(":")
+    # Ohne angeforderte Zusammenfassung liefern OpenAI-Reasoning-Modelle leere Thinking-Teile; mit ihr ist im Tracing
+    # nachvollziehbar, warum der Agent ein Tool aufruft. Nicht-Reasoning-Modelle lehnen beide Parameter ab.
+    if provider.startswith("openai") and openai_model_profile(name).get("openai_supports_reasoning"):
+        settings["openai_reasoning_summary"] = "detailed"  # type: ignore[typeddict-unknown-key]
+        if reasoning_effort:
+            settings["openai_reasoning_effort"] = reasoning_effort  # type: ignore[typeddict-unknown-key]
+    return settings
+
+
+def build_model(model: str, requests_per_minute: int = 0, tokens_per_minute: int = 0) -> Model | str:
+    """Mit Limit gedrosselt (siehe app.agent.rate_limit); ohne Limit als Name, den PydanticAI erst bei Bedarf
+    auflöst (z. B. in Tests ohne API-Key). Agenten mit demselben Modell teilen sich das Limit."""
+    if requests_per_minute <= 0 and tokens_per_minute <= 0:
+        return model
+    budget = shared_budget(model, requests_per_minute, tokens_per_minute)
+    return RateLimitedModel(model, requests_per_minute, budget=budget)

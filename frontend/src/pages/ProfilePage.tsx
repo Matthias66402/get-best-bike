@@ -1,0 +1,108 @@
+import { type FormEvent, useState } from "react";
+import { api, json } from "../api/client";
+import type { User } from "../api/types";
+import { useAuth, useCurrentUser } from "../auth/AuthContext";
+
+const toField = (value: number | null) => (value === null ? "" : String(value));
+
+export function ProfilePage() {
+  const { setUser } = useAuth();
+  const user = useCurrentUser();
+  const [form, setForm] = useState({
+    display_name: user.display_name,
+    email: user.email,
+    password: "",
+    height_cm: toField(user.height_cm),
+    inseam_cm: toField(user.inseam_cm),
+  });
+  const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const changes: Record<string, string | number | null> = {};
+    if (form.display_name !== user.display_name) changes.display_name = form.display_name;
+    if (form.email !== user.email) changes.email = form.email;
+    if (form.password) changes.password = form.password;
+    // Leere Felder löschen die Angabe
+    for (const field of ["height_cm", "inseam_cm"] as const) {
+      if (form[field] !== toField(user[field])) changes[field] = form[field] ? Number(form[field]) : null;
+    }
+    if (Object.keys(changes).length === 0) return setStatus({ ok: true, text: "Keine Änderungen." });
+    try {
+      const updated = await api<User>("/api/users/me", { method: "PATCH", body: json(changes) });
+      setUser(updated);
+      setForm({ ...form, password: "" });
+      setStatus({ ok: true, text: "Gespeichert." });
+    } catch (err) {
+      setStatus({ ok: false, text: (err as Error).message });
+    }
+  }
+
+  return (
+    <div className="page narrow">
+      <h1>Profil</h1>
+      <form className="card stack" onSubmit={submit}>
+        <label>
+          Name
+          <input
+            required
+            value={form.display_name}
+            onChange={(e) => setForm({ ...form, display_name: e.target.value })}
+          />
+        </label>
+        <label>
+          E-Mail
+          <input
+            type="email"
+            required
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+          />
+        </label>
+        <label>
+          Neues Passwort <span className="muted">(leer lassen, um es beizubehalten)</span>
+          <input
+            type="password"
+            minLength={8}
+            autoComplete="new-password"
+            value={form.password}
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
+          />
+        </label>
+
+        <h2>Körpermaße für die Rahmengröße</h2>
+        <p className="muted small">
+          Nennst Du im Chat keine anderen Maße, bestimmt der Berater die Rahmengröße mit diesen Angaben. Die
+          Schrittlänge ist genauer als die Körpergröße: barfuß an die Wand stellen, ein Buch fest in den Schritt drücken
+          und bis zum Boden messen.
+        </p>
+        <label>
+          Körpergröße in cm
+          <input
+            type="number"
+            min={100}
+            max={230}
+            value={form.height_cm}
+            onChange={(e) => setForm({ ...form, height_cm: e.target.value })}
+          />
+        </label>
+        <label>
+          Schrittlänge in cm
+          <input
+            type="number"
+            min={40}
+            max={110}
+            value={form.inseam_cm}
+            onChange={(e) => setForm({ ...form, inseam_cm: e.target.value })}
+          />
+        </label>
+
+        <p className="muted small">Rolle: {user.role === "admin" ? "Administrator" : "Nutzer"}</p>
+        {status && <p className={status.ok ? "success" : "error"}>{status.text}</p>}
+        <button type="submit" className="primary">
+          Speichern
+        </button>
+      </form>
+    </div>
+  );
+}
