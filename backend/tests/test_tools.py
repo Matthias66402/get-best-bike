@@ -88,6 +88,16 @@ async def test_kids_frame_size_ignores_profile_of_user() -> None:
     assert (await recommend_frame_size(ctx, BikeCategory.gravel))["size"]  # Erwachsene: Profil gilt weiter
 
 
+async def test_kids_wheel_offers_neighbour_size_at_border() -> None:
+    """Beratung 25: 126 cm ergab nur 20 Zoll, der Nutzer wollte 24 Zoll."""
+    at_upper = await recommend_frame_size(await context(), BikeCategory.kids, height_cm=126)
+    assert at_upper["size"] == '20"' and at_upper["alternative"] == '24"' and "Grenze" in at_upper["note"]
+    at_lower = await recommend_frame_size(await context(), BikeCategory.kids, height_cm=133)
+    assert at_lower["size"] == '24"' and at_lower["alternative"] == '20"'
+    middle = await recommend_frame_size(await context(), BikeCategory.kids, height_cm=122)
+    assert middle["size"] == '20"' and "alternative" not in middle
+
+
 # --- Websuche ---
 
 

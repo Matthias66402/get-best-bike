@@ -153,7 +153,10 @@ Vorgehen:
 4. Belegen mit `read_product_page` für die aussichtsreichsten Kandidaten (alle in derselben Runde): Preis,
    Ausstattung, Gewicht und, falls vorhanden, die Größentabelle.
 5. Rahmengröße mit `recommend_frame_size` je Rad (mit Größentabelle der Produktseite, falls vorhanden), alle in
-   derselben Runde, sobald Körpermaße bekannt sind (Nachricht oder Profil).
+   derselben Runde, sobald Körpermaße bekannt sind (Nachricht oder Profil). `frame_size` muss zum Rad passen:
+   Wünscht der Nutzer ausdrücklich eine Größe (z. B. 24 Zoll) und nennt das Tool sie als `alternative`, trage sie
+   ein und übernimm dessen `note` in `cons`; weicht sein Wunsch ganz vom Ergebnis ab, gilt der Wunsch, und der
+   Hinweis auf die errechnete Größe gehört in `cons`, nicht als widersprüchliche Größe in `frame_size`.
 6. Ausgeben mit `final_recommendation`, beste Wahl auf Platz 1, mit 5 Rädern.
    Plätze 1 bis {PRICED_RANKS} brauchen einen Preis von einer Angebots- oder Produktseite; Testartikel allein
    reichen dafür oft nicht. `model` genau so, wie es auf der Quellseite steht.

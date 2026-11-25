@@ -37,6 +37,31 @@ FORMULAS: dict[BikeCategory, tuple[float, str, list[tuple[float, str]]]] = {
 KIDS_WHEELS = [(100, '12"'), (115, '16"'), (130, '20"'), (145, '24"'), (160, '26"'), (999, '27,5"/XS')]
 # So nah an einer Grenze gilt die Angabe als "zwischen zwei Größen"
 BORDER_SHARE = 0.03
+# Kinderräder: So viele cm an einer Grenze der Laufradgröße passt auch die Nachbargröße (Beratung 25: 126 cm ergab
+# 20 Zoll, obwohl der Nutzer ausdrücklich 24 Zoll wollte und 24 Zoll mit niedrigem Sattel passt)
+KIDS_BORDER_CM = 5
+
+
+def kids_wheel(height: int) -> dict[str, Any]:
+    """Laufradgröße nach Körpergröße; nahe einer Grenze mit der Nachbargröße als Alternative."""
+    index = next(i for i, (limit, _) in enumerate(KIDS_WHEELS) if height <= limit)
+    limit, wheel = KIDS_WHEELS[index]
+    result: dict[str, Any] = {"size": wheel, "method": f"Laufradgröße nach Körpergröße {height} cm"}
+    if index + 1 < len(KIDS_WHEELS) and height > limit - KIDS_BORDER_CM:
+        larger = KIDS_WHEELS[index + 1][1]
+        result |= {
+            "alternative": larger,
+            "note": f"{height} cm liegt an der Grenze: {larger} passt mit niedrig eingestelltem Sattel und hält "
+            "länger mit; Probefahrt machen.",
+        }
+    elif index > 0 and height <= KIDS_WHEELS[index - 1][0] + KIDS_BORDER_CM:
+        smaller = KIDS_WHEELS[index - 1][1]
+        result |= {
+            "alternative": smaller,
+            "note": f"{height} cm liegt an der Grenze: {wheel} nur mit niedrig eingestelltem Sattel, sonst "
+            f"{smaller}; Probefahrt machen.",
+        }
+    return result
 
 
 class SizeChartRow(BaseModel):
@@ -120,8 +145,7 @@ async def recommend_frame_size(
 
     if category == BikeCategory.kids:
         assert height is not None  # oben geprüft
-        wheel = next(name for limit, name in KIDS_WHEELS if height <= limit)
-        return base | {"size": wheel, "method": f"Laufradgröße nach Körpergröße {height} cm"}
+        return base | kids_wheel(height)
 
     if category in (BikeCategory.cargo, BikeCategory.folding, BikeCategory.other):
         return base | {
