@@ -2,17 +2,21 @@
 
 Pydantic AI erzeugt OpenTelemetry-Spans für Agent-Läufe, Modellaufrufe (als Generation mit Modell, Tokens, Kosten),
 Tool-Aufrufe und Embeddings; das Langfuse-SDK exportiert sie. Je Chat-Nachricht entsteht ein Trace mit der Wurzel
-`chat-turn` (Eingabe: Nutzernachricht, Ausgabe: Antwort), je Beratung eine Session.
+`chat-turn` (Eingabe: Nutzernachricht, Ausgabe: Antwort), je Beratung eine Session. Modell- und Embedding-Spans
+bekommen feste Namen je Agent statt des Modellnamens (`observation_name`).
 
 Aktiv nur mit LANGFUSE_PUBLIC_KEY und LANGFUSE_SECRET_KEY (Basis-URL: LANGFUSE_BASE_URL, Umgebung:
 LANGFUSE_TRACING_ENVIRONMENT); LANGFUSE_TRACING_ENABLED=false schaltet es ab, z. B. in den Tests.
 """
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from typing import Any
 
+from opentelemetry import trace
+from opentelemetry.context import Context
+from opentelemetry.sdk.trace import Span, SpanProcessor, TracerProvider
 from pydantic_ai import Agent, Embedder
 
 from app.config import get_settings
@@ -36,10 +40,46 @@ def setup_tracing() -> None:
 
     # Zugangsdaten, Basis-URL und Umgebung liest das SDK aus den LANGFUSE_*-Umgebungsvariablen
     Langfuse()
+    _add_span_renamer()
     Agent.instrument_all()
     Embedder.instrument_all()
     _enabled = True
     logger.info("Langfuse-Tracing aktiv")
+
+
+def observation_name(name: str, attributes: Mapping[str, Any], parent_attributes: Mapping[str, Any]) -> str | None:
+    """Neuer Name für Modell- und Embedding-Spans von Pydantic AI, sonst None.
+
+    Pydantic AI benennt sie nach dem Modell („chat gpt-5-mini“, „embeddings text-embedding-3-small“); ein
+    Modellwechsel änderte dann alle Namen, Filter und Evaluatoren in Langfuse. Das Modell steht ohnehin im Feld
+    `model` der Generation. Neu: je Agent ein fester Name, z. B. „bike-recommender llm-call“.
+    """
+    operation = attributes.get("gen_ai.operation.name")
+    if operation == "chat" and name.startswith("chat "):
+        # Pydantic AI gibt den Agent-Namen per Baggage an den Span; sonst trägt ihn der Agent-Span darüber
+        agent = (
+            attributes.get("gen_ai.agent.name")
+            or parent_attributes.get("gen_ai.agent.name")
+            or parent_attributes.get("agent_name")
+        )
+        return f"{agent} llm-call" if agent else "llm-call"
+    if operation == "embeddings" and name.startswith("embeddings "):
+        return "embed-text"
+    return None
+
+
+class _RenameSpans(SpanProcessor):
+    def on_start(self, span: Span, parent_context: Context | None = None) -> None:
+        parent = trace.get_current_span(parent_context)
+        parent_attributes = getattr(parent, "attributes", None) or {}
+        if new_name := observation_name(span.name, span.attributes or {}, parent_attributes):
+            span.update_name(new_name)
+
+
+def _add_span_renamer() -> None:
+    provider = trace.get_tracer_provider()
+    if isinstance(provider, TracerProvider):  # das SDK des Langfuse-Clients; exportiert wird erst am Span-Ende
+        provider.add_span_processor(_RenameSpans())
 
 
 def shutdown_tracing() -> None:

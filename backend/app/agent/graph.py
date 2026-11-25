@@ -61,6 +61,7 @@ from app.agent.recommendation_schema import BikeRecommendation, ClarificationQue
 from app.agent.recommender import RecommenderOutput, recommender_agent
 from app.agent.tools.research import research_knowledge
 from app.agent.tools.web import search_bikes
+from app.observability import observe
 
 logger = logging.getLogger(__name__)
 
@@ -203,10 +204,17 @@ async def _run_prefetched(runtime: Runtime[AgentDeps], tool_name: str, args: Bas
         "args": args.model_dump(mode="json", exclude_none=True), "result": None,
     }  # fmt: skip
     runtime.stream_writer(tool_call_event(call["tool_call_id"], tool_name, call["args"]))
-    try:
-        call["result"] = await tool(_tool_context(runtime), **args.model_dump(exclude_none=True))
-    except Exception as exc:  # wie ein Tool-Fehler: der Berater kann es selbst erneut versuchen
-        call["result"] = {"error": f"Vorab-Aufruf fehlgeschlagen: {type(exc).__name__}: {exc}"}
+    # Im Trace wie ein Tool-Aufruf des Beraters (gleicher Name), damit Filter und Evaluatoren beide erfassen
+    with observe(
+        tool_name, as_type="tool", input=call["args"],
+        metadata={"tool_call_id": call["tool_call_id"], "prefetched": True},
+    ) as span:  # fmt: skip
+        try:
+            call["result"] = await tool(_tool_context(runtime), **args.model_dump(exclude_none=True))
+        except Exception as exc:  # wie ein Tool-Fehler: der Berater kann es selbst erneut versuchen
+            call["result"] = {"error": f"Vorab-Aufruf fehlgeschlagen: {type(exc).__name__}: {exc}"}
+        failed = isinstance(call["result"], dict) and "error" in call["result"]
+        span.update(output=call["result"], **({"level": "WARNING"} if failed else {}))
     runtime.stream_writer(tool_result_event(call["tool_call_id"], call["result"]))
     return call
 
