@@ -588,3 +588,31 @@ async def test_earlier_pages_are_compacted_only_for_the_model() -> None:
     assert [len(text) for text in page_texts(sent)] == [EARLIER_PAGE_CHARS]
     assert page_texts(result.all_messages()) == [long_page["text"]]  # gespeicherter Verlauf vollständig
     assert known_pages(result.all_messages())[normalize_url(CUBE_URL)].strip() == long_page["text"]
+
+
+async def test_all_problems_reported_at_once_and_last_attempt_keeps_clean_bikes() -> None:
+    """Beratung 24: Der Budgetfehler kam erst beim vierten Versuch ans Licht, dann brach der Lauf mit „Exceeded
+    maximum output retries“ ab. Jetzt stehen alle Probleme in der ersten Rückmeldung, und der letzte Versuch liefert
+    die belegten Räder statt eines Fehlers."""
+    bad = ("final_recommendation", recommendation(bike(1), bike(2, price=3999)))
+    result = await run(SEARCH, RESEARCH, FRAME, bad, bad, bad, bad)
+    rejections = retry_prompts(result.all_messages())
+    assert len(rejections) == 3  # gestrichen wird erst beim letzten erlaubten Versuch
+    first = rejections[0]
+    assert "3999" in first and "Budget" in first  # Preisbeleg und Budget in einer Rückmeldung
+    assert "erneut aufzurufen" in first
+    output = result.output
+    assert isinstance(output, BikeRecommendation) and [b.rank for b in output.ranking] == [1]
+    assert "nicht ausreichend belegen" in output.buying_tips[-1]
+
+
+async def test_frame_size_tool_lists_sizes_already_determined() -> None:
+    tool_def = ToolDefinition(name="recommend_frame_size", description="Empfiehlt die Rahmengröße.")
+    call = ModelResponse(parts=[ToolCallPart("recommend_frame_size", {"category": "kids"}, tool_call_id="c1")])
+    done = ModelRequest(
+        parts=[ToolReturnPart("recommend_frame_size", {"category": "kids", "size": "24 Zoll"}, tool_call_id="c1")]
+    )
+    deps = SimpleNamespace(height_cm=None, inseam_cm=None, criteria={"height_cm": 126})
+    messages = [ModelRequest(parts=[UserPromptPart("Kinderrad")]), call, done]
+    prepared = await frame_size_budget(SimpleNamespace(messages=messages, deps=deps), tool_def)
+    assert prepared is not None and "kids: 24 Zoll" in (prepared.description or "")

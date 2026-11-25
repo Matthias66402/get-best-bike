@@ -8,6 +8,8 @@ Körpermaßen gibt es eine Rahmengröße aus `recommend_frame_size`.
 
 import logging
 import re
+from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -36,6 +38,7 @@ from app.agent.recommendation_schema import (
     BikeCategory,
     BikeRecommendation,
     ClarificationQuestion,
+    RankedBike,
     TextAnswer,
 )
 from app.agent.tools.frame_size import NO_MEASUREMENTS, recommend_frame_size
@@ -142,6 +145,7 @@ Vorgehen:
 1. Kriterien klären: Einsatzzweck, Budget, Kategorie, mit oder ohne Motor, Körpermaße, besondere Wünsche. Fehlt der
    Einsatzzweck oder das Budget und lässt es sich nicht sinnvoll aus der Nachricht ableiten, frage mit `ask_user`
    nach (alle offenen Punkte in einer Frage). Körpermaße sind nicht Pflicht: Ohne sie gibt es keine Rahmengröße.
+   Frage nie, ob neu oder gebraucht: Die Rangliste enthält immer Neuräder.
 2. Hintergrund: Vor der ersten Rangliste einer Beratung `research_knowledge` aufrufen (falls noch nicht im Verlauf)
    und die Hinweise bei der Auswahl berücksichtigen.
 3. Kandidaten finden mit `search_bikes`: 2-3 Suchen in derselben Runde, z. B. nach Tests bzw. Bestenlisten der
@@ -264,7 +268,23 @@ async def frame_size_budget(ctx: RunContext[AgentDeps], tool_def: ToolDefinition
     measured = deps.height_cm or deps.inseam_cm or deps.criteria.get("height_cm") or deps.criteria.get("inseam_cm")
     if not measured and failed_without_measurements(ctx.messages):
         return None
-    return tool_def if calls_in_run(ctx.messages, tool_def.name) < FRAME_SIZE_CALLS else None
+    if calls_in_run(ctx.messages, tool_def.name) >= FRAME_SIZE_CALLS:
+        return None
+    if known := determined_sizes(ctx.messages):
+        # Beratung 24: nach jeder Zurückweisung derselbe Aufruf (Kinderrad, 126 cm), je eine Modellrunde
+        note = "Schon ermittelt (gilt weiter, nicht erneut aufrufen): " + "; ".join(known) + "."
+        return replace(tool_def, description=f"{tool_def.description}\n\n{note}")
+    return tool_def
+
+
+def determined_sizes(messages: list[ModelMessage]) -> list[str]:
+    """Rahmengrößen, die `recommend_frame_size` in dieser Antwort schon geliefert hat, z. B. „kids: 24 Zoll“."""
+    sizes = []
+    for content in tool_returns(current_run(messages), "recommend_frame_size"):
+        if isinstance(content, dict) and content.get("size"):
+            label = content.get("model") or content.get("category")
+            sizes.append(f"{label}: {content['size']}")
+    return list(dict.fromkeys(sizes))
 
 
 WEB_BUDGET_USED_NOTE = (
@@ -453,7 +473,15 @@ def check_frame_sizes(output: BikeRecommendation, deps: AgentDeps, messages: lis
     # Das Tool kannte keine Maße (und ist dann ausgeblendet): eine Größe ließe sich nicht mehr bestimmen
     if not measured or failed_without_measurements(messages):
         return
-    needs_size = [b for b in output.ranking if b.category not in NO_FRAME_SIZE]
+    # Kinderräder: Die Maße im Profil sind die des Nutzers. Eine Größe ist nur Pflicht, wenn das Tool mit der
+    # Körpergröße des Kindes schon eine geliefert hat; sonst ließe sie sich nicht bestimmen
+    kids_sized = any(
+        isinstance(content, dict) and content.get("category") == BikeCategory.kids.value and content.get("size")
+        for content in tool_returns(current_run(messages), "recommend_frame_size")
+    )
+    needs_size = [
+        b for b in output.ranking if b.category not in NO_FRAME_SIZE and (b.category != BikeCategory.kids or kids_sized)
+    ]
     if needs_size and not used_tool(messages, "recommend_frame_size"):
         raise ModelRetry(
             "Die Körpermaße sind bekannt: Bestimme die Rahmengrößen mit `recommend_frame_size` (je Rad, mit "
@@ -462,6 +490,58 @@ def check_frame_sizes(output: BikeRecommendation, deps: AgentDeps, messages: lis
     if missing := [b for b in needs_size if not b.frame_size]:
         names = ", ".join(f"Platz {b.rank}" for b in missing)
         raise ModelRetry(f"`frame_size` fehlt für {names}; nimm die Größe aus `recommend_frame_size`.")
+
+
+KEEP_RESULTS_NOTE = (
+    "Behebe alle genannten Punkte in einem Schritt. Ergebnisse früherer Tool-Aufrufe dieser Antwort gelten weiter, "
+    "z. B. Rahmengrößen aus `recommend_frame_size`: Übernimm sie, statt das Tool erneut aufzurufen."
+)
+
+
+def collect_problems(*checks: Callable[[], None]) -> list[str]:
+    """Führt alle Prüfungen aus und sammelt ihre Rückmeldungen. Beratung 24: Nacheinander gemeldet kam der
+    Budgetfehler von Platz 3 erst beim vierten Versuch ans Licht, danach war die Wiederholungsgrenze erreicht."""
+    problems = []
+    for check in checks:
+        try:
+            check()
+        except ModelRetry as exc:
+            problems.append(str(exc))
+    return problems
+
+
+def check_researched(messages: list[ModelMessage]) -> None:
+    if not researched_categories(ModelMessagesTypeAdapter.dump_python(messages, mode="json")):
+        raise ModelRetry(
+            "Bevor Du die Rangliste ausgibst, recherchiere mit `research_knowledge` in der Wissensbasis zur "
+            "Kategorie und zum Einsatzzweck und berücksichtige die Hinweise."
+        )
+
+
+def bike_problems(output: BikeRecommendation, ctx: RunContext[AgentDeps]) -> list[str]:
+    """Prüfungen, die einzelne Räder betreffen; ein betroffenes Rad lässt sich notfalls streichen."""
+    return collect_problems(
+        lambda: check_sources(output, known_pages(ctx.messages), web_budget=web_budget_left(ctx.messages)),
+        lambda: check_budget(output),
+        lambda: check_spec_notes(output),
+        lambda: check_electric(output),
+        lambda: check_frame_sizes(output, ctx.deps, ctx.messages),
+    )
+
+
+def salvage_ranking(output: BikeRecommendation, ctx: RunContext[AgentDeps]) -> BikeRecommendation | None:
+    """Behält die Räder, die alle Prüfungen bestehen (geprüft auf dem Rang, den sie dann bekommen), und rückt sie auf;
+    None, wenn keines übrig bleibt."""
+    kept: list[RankedBike] = []
+    for bike in output.ranking:
+        candidate = bike.model_copy(update={"rank": len(kept) + 1})
+        if not bike_problems(output.model_copy(update={"ranking": [candidate]}), ctx):
+            kept.append(candidate)
+    if not kept:
+        return None
+    dropped = len(output.ranking) - len(kept)
+    tip = f"{dropped} weitere Kandidaten ließen sich nicht ausreichend belegen und fehlen deshalb in der Liste."
+    return output.model_copy(update={"ranking": kept, "buying_tips": [*output.buying_tips, tip]})
 
 
 def build_agent() -> Agent[AgentDeps, RecommenderOutput]:
@@ -534,19 +614,21 @@ def build_agent() -> Agent[AgentDeps, RecommenderOutput]:
             check_answer_needed(ctx)
         if not isinstance(output, BikeRecommendation):
             return output
-        history_json = ModelMessagesTypeAdapter.dump_python(ctx.messages, mode="json")
-        if not researched_categories(history_json):
-            raise ModelRetry(
-                "Bevor Du die Rangliste ausgibst, recherchiere mit `research_knowledge` in der Wissensbasis zur "
-                "Kategorie und zum Einsatzzweck und berücksichtige die Hinweise."
-            )
-        check_ranking_size(output, ctx)
-        check_sources(output, known_pages(ctx.messages), web_budget=web_budget_left(ctx.messages))
-        check_budget(output)
-        check_spec_notes(output)
-        check_electric(output)
-        check_frame_sizes(output, ctx.deps, ctx.messages)
-        return output
+        global_problems = collect_problems(
+            lambda: check_researched(ctx.messages), lambda: check_ranking_size(output, ctx)
+        )
+        problems = global_problems + bike_problems(output, ctx)
+        if not problems:
+            return output
+        # Letzter Versuch: lieber eine kürzere, belegte Rangliste als „Exceeded maximum output retries“
+        last_attempt = ctx.retry >= ctx.max_retries and not global_problems
+        if last_attempt and (salvaged := salvage_ranking(output, ctx)) is not None:
+            logger.warning(
+                "Letzter Versuch: %d von %d Rädern gestrichen", len(output.ranking) - len(salvaged.ranking),
+                len(output.ranking),
+            )  # fmt: skip
+            return salvaged
+        raise ModelRetry("\n\n".join([*problems, KEEP_RESULTS_NOTE]))
 
     return agent
 

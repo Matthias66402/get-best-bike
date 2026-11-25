@@ -3,12 +3,31 @@
 from collections.abc import AsyncIterator
 
 import pytest
-from pydantic_ai import Agent, ModelMessage, ModelResponse, TextPart
+from pydantic_ai import (
+    Agent,
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    RequestUsage,
+    TextPart,
+    ToolCallPart,
+    ToolReturnPart,
+    UserPromptPart,
+)
 from pydantic_ai.exceptions import ModelRateLimitError
+from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from app.agent.models import MAX_OUTPUT_TOKENS, build_model
-from app.agent.rate_limit import RATE_LIMIT_RETRIES, RateLimitedModel, RequestBudget, shared_budget
+from app.agent.rate_limit import (
+    CHARS_PER_TOKEN,
+    ESTIMATE_MARGIN,
+    RATE_LIMIT_RETRIES,
+    RateLimitedModel,
+    RequestBudget,
+    estimate_tokens,
+    shared_budget,
+)
 
 
 class FakeClock:
@@ -104,3 +123,22 @@ async def test_gives_up_after_retries() -> None:
     with pytest.raises(ModelRateLimitError):
         await Agent(limited(model, clock)).run("Hallo")
     assert len(calls) == RATE_LIMIT_RETRIES + 1
+
+
+def test_estimate_counts_content_not_json_overhead() -> None:
+    """Beratung 22: Das ganze Verlaufs-JSON ergab 100.000 geschätzte Tokens bei 29.000 tatsächlichen."""
+    prompt = ModelRequest(parts=[UserPromptPart("x" * 2000)], instructions="y" * 1000)
+    tokens = estimate_tokens([prompt], {"max_tokens": 500}, ModelRequestParameters())
+    assert tokens == int(3000 / CHARS_PER_TOKEN * ESTIMATE_MARGIN) + 500
+
+
+def test_estimate_builds_on_last_reported_usage() -> None:
+    """Der Verbrauch der letzten Antwort ist exakt; geschätzt wird nur, was danach kam (hier ein Tool-Ergebnis)."""
+    prompt = ModelRequest(parts=[UserPromptPart("x" * 90_000)])
+    response = ModelResponse(
+        parts=[ToolCallPart("search_bikes", {"query": "a"}, tool_call_id="c1")],
+        usage=RequestUsage(input_tokens=20_000, output_tokens=300),
+    )
+    result = ModelRequest(parts=[ToolReturnPart("search_bikes", "z" * 4000, tool_call_id="c1")])
+    tokens = estimate_tokens([prompt, response, result], {}, ModelRequestParameters())
+    assert tokens == int((20_300 + 4000 / CHARS_PER_TOKEN) * ESTIMATE_MARGIN)

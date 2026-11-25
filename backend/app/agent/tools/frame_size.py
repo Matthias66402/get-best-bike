@@ -16,6 +16,10 @@ from app.agent.tools.common import tool_error
 # Schrittlänge ≈ 47 % der Körpergröße, wenn nur die Größe bekannt ist
 INSEAM_SHARE = 0.47
 NO_MEASUREMENTS = "Weder Körpergröße noch Schrittlänge bekannt. Den Nutzer fragen oder ohne Größe beraten."
+NO_CHILD_HEIGHT = (
+    "Für Kinderräder die Körpergröße des Kindes angeben (nicht die des Nutzers aus dem Profil); ist sie nicht "
+    "bekannt, ohne Größe beraten."
+)
 
 # Faktor Schrittlänge → Sitzrohrlänge, Einheit, Größenstufen als (Obergrenze, Name)
 MTB_SIZES = [(15.5, "XS"), (16.9, "S"), (18.4, "M"), (19.9, "L"), (21.4, "XL"), (99.0, "XXL")]
@@ -76,7 +80,8 @@ async def recommend_frame_size(
 
     Gibt es auf der Produktseite eine Größentabelle (Körpergröße je Rahmengröße), übergib sie als `size_chart`, dann
     gilt sie statt der Faustformel. Rufe das Tool für jedes Rad der Rangliste mit eigener Größentabelle bzw. einmal
-    je Kategorie auf, alle in derselben Runde. Fehlende Maße ergänzt das Tool aus dem Profil des Nutzers.
+    je Kategorie auf, alle in derselben Runde. Fehlende Maße ergänzt das Tool aus dem Profil des Nutzers,
+    außer bei Kinderrädern: Dort die Körpergröße des Kindes übergeben.
 
     Args:
         category: Kategorie des Rads.
@@ -85,8 +90,14 @@ async def recommend_frame_size(
         size_chart: Größentabelle des Herstellers, falls bekannt.
         model: Modellname, nur zur Zuordnung im Ergebnis.
     """
-    height = height_cm or ctx.deps.height_cm
-    inseam = inseam_cm or ctx.deps.inseam_cm
+    if category == BikeCategory.kids:
+        # Die Maße im Profil sind die des Nutzers, nicht die des Kindes: nur übergebene Maße zählen
+        height, inseam = height_cm, inseam_cm
+        if not height:
+            return tool_error(NO_CHILD_HEIGHT)
+    else:
+        height = height_cm or ctx.deps.height_cm
+        inseam = inseam_cm or ctx.deps.inseam_cm
     if not height and not inseam:
         return tool_error(NO_MEASUREMENTS)
     base: dict[str, Any] = {"model": model, "category": category.value} if model else {"category": category.value}
@@ -108,8 +119,7 @@ async def recommend_frame_size(
         }
 
     if category == BikeCategory.kids:
-        if not height:
-            return tool_error("Für Kinderräder die Körpergröße des Kindes angeben.")
+        assert height is not None  # oben geprüft
         wheel = next(name for limit, name in KIDS_WHEELS if height <= limit)
         return base | {"size": wheel, "method": f"Laufradgröße nach Körpergröße {height} cm"}
 

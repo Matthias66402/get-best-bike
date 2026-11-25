@@ -89,6 +89,16 @@ def _add_span_renamer() -> None:
         provider.add_span_processor(_RenameSpans())
 
 
+def add_metadata(**values: str | int | float) -> None:
+    """Metadaten an der aktuellen Observation, z. B. am Modell-Span von Pydantic AI (in Langfuse unter Metadata)."""
+    if not _enabled:
+        return
+    span = trace.get_current_span()
+    if span.is_recording():
+        for key, value in values.items():
+            span.set_attribute(f"langfuse.observation.metadata.{key}", value)
+
+
 def mark_warning(message: str) -> None:
     """Setzt die aktuelle Observation (z. B. den Tool-Span von Pydantic AI) auf Level WARNING, damit gescheiterte
     Tool-Aufrufe in Langfuse filterbar sind; der Lauf selbst geht weiter."""

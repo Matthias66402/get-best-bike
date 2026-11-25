@@ -15,6 +15,7 @@ OpenAI zählt das Limit je Modell; Agenten mit demselben Modell teilen sich desh
 """
 
 import asyncio
+import json
 import logging
 import time
 from collections import deque
@@ -22,19 +23,24 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any
 
-from pydantic_ai import ModelMessage, ModelMessagesTypeAdapter, ModelResponse, RunContext
+from pydantic_ai import ModelMessage, ModelRequest, ModelResponse, RunContext, ThinkingPart, ToolCallPart
 from pydantic_ai.exceptions import ModelRateLimitError
 from pydantic_ai.models import Model, ModelRequestParameters, StreamedResponse
 from pydantic_ai.models.wrapper import WrapperModel
 from pydantic_ai.settings import ModelSettings
+
+from app.observability import add_metadata
 
 logger = logging.getLogger(__name__)
 
 WINDOW_SECONDS = 60.0
 # Abstand zur Fenstergrenze, damit Uhrabweichungen zum Server nicht doch zu einem 429 führen
 MARGIN_SECONDS = 1.0
-# Zeichen je Token für die Schätzung der Eingabe; bewusst niedrig (JSON und Deutsch brauchen mehr Tokens als Englisch)
-CHARS_PER_TOKEN = 3.0
+# Zeichen je Token für den geschätzten Teil der Eingabe (Inhalte ohne JSON-Gerüst); gemessen an 330 Aufrufen von
+# gpt-5-mini: Median 2,7, 95 % über 1,95. Bewusst niedrig, geschätzt wird nur der neue Teil (siehe estimate_tokens)
+CHARS_PER_TOKEN = 2.0
+# Zuschlag auf die Schätzung, z. B. für geänderte Anweisungen oder Tool-Schemas seit der letzten Antwort
+ESTIMATE_MARGIN = 1.1
 # Wiederholungen nach einem 429 beim Öffnen der Anfrage und Wartezeit, wenn der Anbieter keine nennt
 RATE_LIMIT_RETRIES = 3
 DEFAULT_RETRY_SECONDS = 20.0
@@ -99,16 +105,58 @@ def shared_budget(model: str, per_minute: int, tokens_per_minute: int = 0) -> Re
     return budget
 
 
+def content_chars(messages: list[ModelMessage]) -> int:
+    """Zeichen, die als Eingabe beim Modell ankommen: Prompts, Texte, Tool-Argumente und -Ergebnisse, Anweisungen.
+
+    Nicht das ganze Verlaufs-JSON: Zeitstempel, Feldnamen und Anbieter-Metadaten zählt der Anbieter nicht, sie
+    machten die Schätzung drei- bis vierfach zu hoch (Beratung 22: 100.000 geschätzt, 29.000 tatsächlich).
+    Reasoning-Zusammenfassungen gehen nicht als Eingabe zurück.
+    """
+    chars = 0
+    for message in messages:
+        if isinstance(message, ModelRequest) and message.instructions:
+            chars += len(message.instructions)
+        for part in message.parts:
+            if isinstance(part, ToolCallPart):
+                chars += len(part.tool_name) + len(part.args_as_json_str())
+            elif isinstance(part, ThinkingPart):
+                continue
+            elif isinstance(content := getattr(part, "content", None), str):
+                chars += len(content)
+            elif content is not None:
+                chars += len(json.dumps(content, ensure_ascii=False, default=str))
+    return chars
+
+
 def estimate_tokens(
     messages: list[ModelMessage],
     model_settings: ModelSettings | None,
     model_request_parameters: ModelRequestParameters,
 ) -> int:
-    """Eingabe (Verlauf, Anweisungen, Tool-Schemas) grob nach Zeichen plus angefragter Höchstwert für die Ausgabe."""
-    chars = len(ModelMessagesTypeAdapter.dump_json(messages))
-    for tool in [*model_request_parameters.function_tools, *model_request_parameters.output_tools]:
-        chars += len(tool.name) + len(tool.description or "") + len(str(tool.parameters_json_schema))
-    return int(chars / CHARS_PER_TOKEN) + int((model_settings or {}).get("max_tokens") or 0)
+    """Eingabe-Tokens der Anfrage plus angefragter Höchstwert für die Ausgabe.
+
+    Selbstkalibrierend: Die letzte Antwort im Verlauf nennt den exakten Verbrauch der Anfrage davor (Eingabe plus
+    Ausgabe, die nun im Verlauf steht); geschätzt wird nur, was seitdem dazukam (meist Tool-Ergebnisse), nach Zeichen.
+    Ohne frühere Antwort zählen alle Inhalte und die Tool-Schemas. Der Zuschlag deckt Änderungen der Anweisungen ab.
+    """
+    last = next(
+        (
+            index
+            for index in range(len(messages) - 1, -1, -1)
+            if isinstance(message := messages[index], ModelResponse) and message.usage.input_tokens
+        ),
+        None,
+    )
+    if last is None:
+        chars = content_chars(messages)
+        for tool in [*model_request_parameters.function_tools, *model_request_parameters.output_tools]:
+            chars += len(tool.name) + len(tool.description or "") + len(json.dumps(tool.parameters_json_schema))
+        tokens = chars / CHARS_PER_TOKEN
+    else:
+        usage = messages[last].usage
+        tokens = usage.input_tokens + usage.output_tokens + content_chars(messages[last + 1 :]) / CHARS_PER_TOKEN
+    max_output = int((model_settings or {}).get("max_tokens") or 0)
+    return int(tokens * ESTIMATE_MARGIN) + max_output
 
 
 class RateLimitedModel(WrapperModel):
@@ -120,13 +168,20 @@ class RateLimitedModel(WrapperModel):
         super().__init__(wrapped)
         self.budget = budget or RequestBudget(per_minute, tokens_per_minute)
 
-    async def _wait_after_rate_limit(self, exc: ModelRateLimitError, attempt: int) -> None:
-        seconds = exc.retry_after if exc.retry_after else DEFAULT_RETRY_SECONDS
+    async def _wait_after_rate_limit(self, exc: ModelRateLimitError, attempt: int) -> float:
+        seconds = (exc.retry_after if exc.retry_after else DEFAULT_RETRY_SECONDS) + MARGIN_SECONDS
         logger.warning(
             "Anfragelimit von %s, Versuch %d/%d in %.0f s: %s",
             self.model_name, attempt + 1, RATE_LIMIT_RETRIES, seconds, exc,
         )  # fmt: skip
-        await self.budget.sleep(seconds + MARGIN_SECONDS)
+        await self.budget.sleep(seconds)
+        return seconds
+
+    @staticmethod
+    def _report(tokens: int, waited: float) -> None:
+        """Im Tracing an der Generation: Die Wartezeit steckt sonst unsichtbar in ihrer Dauer (Beratung 23: fast
+        jeder Aufruf rund 60 s, davon der Großteil Warten auf das Minutenfenster)."""
+        add_metadata(rate_limit_wait_s=round(waited, 1), rate_limit_estimated_tokens=tokens)
 
     async def request(
         self,
@@ -135,14 +190,16 @@ class RateLimitedModel(WrapperModel):
         model_request_parameters: ModelRequestParameters,
     ) -> ModelResponse:
         tokens = estimate_tokens(messages, model_settings, model_request_parameters)
+        waited = 0.0
         for attempt in range(RATE_LIMIT_RETRIES + 1):
-            await self.budget.acquire(tokens)
+            waited += await self.budget.acquire(tokens)
+            self._report(tokens, waited)
             try:
                 return await super().request(messages, model_settings, model_request_parameters)
             except ModelRateLimitError as exc:
                 if attempt == RATE_LIMIT_RETRIES:
                     raise
-                await self._wait_after_rate_limit(exc, attempt)
+                waited += await self._wait_after_rate_limit(exc, attempt)
         raise AssertionError("unerreichbar")
 
     @asynccontextmanager
@@ -155,8 +212,10 @@ class RateLimitedModel(WrapperModel):
     ) -> AsyncGenerator[StreamedResponse]:
         tokens = estimate_tokens(messages, model_settings, model_request_parameters)
         async with AsyncExitStack() as stack:
+            waited = 0.0
             for attempt in range(RATE_LIMIT_RETRIES + 1):
-                await self.budget.acquire(tokens)
+                waited += await self.budget.acquire(tokens)
+                self._report(tokens, waited)
                 try:
                     # Nur das Öffnen wird wiederholt; ein Fehler mitten im Stream geht an den Aufrufer
                     stream = await stack.enter_async_context(
@@ -166,5 +225,5 @@ class RateLimitedModel(WrapperModel):
                 except ModelRateLimitError as exc:
                     if attempt == RATE_LIMIT_RETRIES:
                         raise
-                    await self._wait_after_rate_limit(exc, attempt)
+                    waited += await self._wait_after_rate_limit(exc, attempt)
             yield stream

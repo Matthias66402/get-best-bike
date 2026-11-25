@@ -6,7 +6,7 @@ import respx
 
 from app.agent.deps import AgentDeps
 from app.agent.recommendation_schema import BikeCategory
-from app.agent.tools.frame_size import SizeChartRow, recommend_frame_size
+from app.agent.tools.frame_size import NO_CHILD_HEIGHT, SizeChartRow, recommend_frame_size
 from app.agent.tools.prices import price_in_text, prices_in_text
 from app.agent.tools.web import clean_page_text, normalize_url, read_product_page, search_bikes
 from app.config import get_settings
@@ -78,6 +78,14 @@ async def test_frame_size_kids_cargo_and_missing_measures() -> None:
     assert (await recommend_frame_size(await context(), BikeCategory.kids, height_cm=120))["size"] == '20"'
     assert (await recommend_frame_size(await context(), BikeCategory.cargo, height_cm=170))["size"] == "Einheitsgröße"
     assert "error" in await recommend_frame_size(await context(), BikeCategory.road)
+
+
+async def test_kids_frame_size_ignores_profile_of_user() -> None:
+    """Das Profil gehört dem Nutzer: 182 cm ergäben für ein Kinderrad eine falsche Größe."""
+    ctx = await context(height_cm=182, inseam_cm=86)
+    assert (await recommend_frame_size(ctx, BikeCategory.kids))["error"] == NO_CHILD_HEIGHT
+    assert (await recommend_frame_size(ctx, BikeCategory.kids, height_cm=126))["size"] == '20"'
+    assert (await recommend_frame_size(ctx, BikeCategory.gravel))["size"]  # Erwachsene: Profil gilt weiter
 
 
 # --- Websuche ---
