@@ -1,3 +1,5 @@
+from opentelemetry.sdk.trace import TracerProvider
+
 from app import observability
 from app.observability import chat_turn, observation_name, observe, tracing_enabled
 
@@ -13,6 +15,24 @@ def test_model_spans_named_by_agent_not_model() -> None:
     assert observation_name("embeddings text-embedding-3-small", embeddings, {}) == "embed-text"
     assert observation_name("intake run", {}, {}) is None
     assert observation_name("running tool", {"gen_ai.operation.name": "execute_tool"}, {}) is None
+
+
+def test_rename_survives_later_update_name() -> None:
+    """Pydantic AI benennt den Modell-Span nach dem Start erneut; der feste Name muss bleiben."""
+    provider = TracerProvider()
+    provider.add_span_processor(observability._RenameSpans())
+    tracer = provider.get_tracer("test")
+    span = tracer.start_span(
+        "chat gpt-5-mini", attributes={"gen_ai.operation.name": "chat", "gen_ai.agent.name": "intake"}
+    )
+    assert span.name == "intake llm-call"
+    span.update_name("chat gpt-5-mini-2025-08-07")
+    span.end()
+    assert span.name == "intake llm-call"
+    other = tracer.start_span("intake run")
+    other.update_name("intake run 2")
+    other.end()
+    assert other.name == "intake run 2"
 
 
 def test_tracing_disabled_in_tests() -> None:

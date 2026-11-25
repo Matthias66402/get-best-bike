@@ -71,9 +71,16 @@ def observation_name(name: str, attributes: Mapping[str, Any], parent_attributes
 class _RenameSpans(SpanProcessor):
     def on_start(self, span: Span, parent_context: Context | None = None) -> None:
         parent = trace.get_current_span(parent_context)
-        parent_attributes = getattr(parent, "attributes", None) or {}
-        if new_name := observation_name(span.name, span.attributes or {}, parent_attributes):
-            span.update_name(new_name)
+        parent_attributes = dict(getattr(parent, "attributes", None) or {})
+        original_update_name = span.update_name
+
+        def rename(name: str) -> None:
+            original_update_name(observation_name(name, span.attributes or {}, parent_attributes) or name)
+
+        # Pydantic AI benennt den Modell-Span während des Aufrufs erneut („chat <Modell>“, sobald das Modell
+        # feststeht); auch diese Umbenennung läuft so über observation_name
+        span.update_name = rename  # type: ignore[method-assign]
+        rename(span.name)
 
 
 def _add_span_renamer() -> None:
