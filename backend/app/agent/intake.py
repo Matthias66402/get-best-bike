@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent, ToolOutput
 
 from app.agent.deps import AgentDeps
-from app.agent.history import researched_categories
+from app.agent.history import researched_categories, searched_web
 from app.agent.models import build_model
 from app.agent.recommendation_schema import BikeCategory
 from app.config import get_settings
@@ -37,6 +37,8 @@ Kriterien (null, wenn nicht genannt und nicht aus dem Kontext ersichtlich):
 - `electric`: true bei E-Bike/Pedelec, false bei ausdrücklich ohne Motor, sonst null.
 - `budget_eur`: Höchstbetrag in Euro ("bis 3.500 €", "max. 2k" → 2000).
 - `use_case`: Einsatzzweck in wenigen Worten.
+Kurze Bestätigungen oder Aufforderungen ("ja", "gerne", "suche jetzt", "mach weiter") ändern keine Kriterien:
+Übernimm dann alle Kriterien aus den früheren Nachrichten, `use_case` ist nie die Aufforderung selbst.
 - `height_cm`, `inseam_cm`: Körpergröße bzw. Schrittlänge in cm ("1,82 m" → 182).
 
 Websuchen (`search_queries`): Nur wenn eine neue oder geänderte Rangliste nötig ist und Einsatzzweck UND Budget
@@ -87,6 +89,8 @@ class Prefetch(BaseModel):
     """Was der Graph vor dem Berater ausführt bzw. ihm mitgibt."""
 
     searches: list[SearchRequest] = Field(default_factory=list)
+    # Eine (neue oder geänderte) Rangliste steht an, auch wenn die Vorab-Suchen entfallen (Folgenachricht)
+    ranking_due: bool = False
     research: ResearchRequest | None = None
     criteria: dict[str, Any] = Field(default_factory=dict)
     # Fachfremde Nachricht bzw. Frage zum Innenleben: Der Graph antwortet mit einer festen Absage, ohne Berater
@@ -166,11 +170,17 @@ async def plan_prefetch(message: str, history_json: list[Any], deps: AgentDeps) 
     if result.topic in ("fachfremd", "intern"):
         return Prefetch(off_topic=result.topic)
     queries = list(dict.fromkeys(q.strip() for q in result.search_queries if q.strip()))[:MAX_SEARCHES]
+    ranking_due = bool(queries) and bool(deps.settings.tavily_api_key)
+    # Folgenachricht: Allgemeine Vorab-Suchen wiederholten die erste Suche (Beratung 21: dreimal fast dieselben
+    # Anfragen); der Berater baut auf den gelesenen Seiten auf und sucht gezielt nur, was noch fehlt
+    if searched_web(history_json):
+        queries = []
     research = result.research
     if research is not None and (researched_categories(history_json) or not research.use_case.strip()):
         research = None
     return Prefetch(
-        searches=[SearchRequest(query=q) for q in queries] if deps.settings.tavily_api_key else [],
+        searches=[SearchRequest(query=q) for q in queries] if ranking_due else [],
+        ranking_due=ranking_due,
         research=research,
         criteria=result.model_dump(
             mode="json", include={"category", "electric", "budget_eur", "use_case", "height_cm", "inseam_cm"}

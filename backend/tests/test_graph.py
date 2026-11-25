@@ -10,7 +10,7 @@ from pydantic_ai.models.test import TestModel
 
 from app.agent.deps import AgentDeps
 from app.agent.graph import OFF_TOPIC_MESSAGE, recommender_history, route_intake
-from app.agent.intake import Prefetch, ResearchRequest, SearchRequest, intake_agent
+from app.agent.intake import Prefetch, ResearchRequest, SearchRequest, intake_agent, plan_prefetch
 from app.agent.recommendation_schema import BikeCategory
 from app.agent.recommender import recommender_agent
 from app.agent.runner import RunOutcome, run_recommender
@@ -53,6 +53,24 @@ def test_route_intake() -> None:
         searches=[SearchRequest(query="x")], research=ResearchRequest(category=BikeCategory.gravel, use_case="x")
     )
     assert route_intake({"prefetch": prefetch}) == ["prefetch_web_search", "prefetch_research"]
+
+
+async def test_follow_up_skips_prefetch_searches_but_ranking_stays_due() -> None:
+    """Beratung 21: Bei jeder Folgenachricht liefen dieselben allgemeinen Vorab-Suchen wie bei der ersten."""
+    earlier = [
+        {"kind": "request", "parts": [{"part_kind": "user-prompt", "content": "Trekking-E-Bike bis 3500 €"}]},
+        {
+            "kind": "response",
+            "parts": [{"part_kind": "tool-call", "tool_name": "search_bikes", "args": {"query": "a"}}],
+        },
+    ]
+    async with httpx.AsyncClient() as http:
+        deps = AgentDeps(settings=get_settings(), http=http, session_factory=SessionLocal, user_name="Ute")
+        with intake_agent.override(model=TestModel(custom_output_args=INTAKE)):
+            first = await plan_prefetch("Trekking-E-Bike bis 3500 €", [], deps)
+            follow_up = await plan_prefetch("suche jetzt", earlier, deps)
+    assert first.ranking_due and len(first.searches) == 2
+    assert follow_up.ranking_due and follow_up.searches == []
 
 
 def test_prefetched_calls_become_history() -> None:

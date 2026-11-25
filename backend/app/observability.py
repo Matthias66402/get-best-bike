@@ -89,6 +89,17 @@ def _add_span_renamer() -> None:
         provider.add_span_processor(_RenameSpans())
 
 
+def mark_warning(message: str) -> None:
+    """Setzt die aktuelle Observation (z. B. den Tool-Span von Pydantic AI) auf Level WARNING, damit gescheiterte
+    Tool-Aufrufe in Langfuse filterbar sind; der Lauf selbst geht weiter."""
+    if not _enabled:
+        return
+    span = trace.get_current_span()
+    if span.is_recording():
+        span.set_attribute("langfuse.observation.level", "WARNING")
+        span.set_attribute("langfuse.observation.status_message", message)
+
+
 def shutdown_tracing() -> None:
     """Gepufferte Spans beim Beenden senden."""
     if _enabled:

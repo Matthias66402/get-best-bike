@@ -2,9 +2,14 @@ from typing import Any
 
 import httpx
 
+from app.observability import mark_warning
+
 
 def tool_error(message: str) -> dict[str, Any]:
-    """Fehler als Tool-Ergebnis: Das LLM kann darauf reagieren (andere Suche, Rückfrage, Hinweis)."""
+    """Fehler als Tool-Ergebnis: Das LLM kann darauf reagieren (andere Suche, Rückfrage, Hinweis).
+
+    Im Tracing wird der Tool-Aufruf als WARNING markiert (z. B. Filter „gescheiterte Suchen“ in Langfuse)."""
+    mark_warning(message)
     return {"error": message}
 
 

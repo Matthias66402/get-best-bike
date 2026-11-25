@@ -15,6 +15,7 @@ from app.agent.tools.common import tool_error
 
 # Schrittlänge ≈ 47 % der Körpergröße, wenn nur die Größe bekannt ist
 INSEAM_SHARE = 0.47
+NO_MEASUREMENTS = "Weder Körpergröße noch Schrittlänge bekannt. Den Nutzer fragen oder ohne Größe beraten."
 
 # Faktor Schrittlänge → Sitzrohrlänge, Einheit, Größenstufen als (Obergrenze, Name)
 MTB_SIZES = [(15.5, "XS"), (16.9, "S"), (18.4, "M"), (19.9, "L"), (21.4, "XL"), (99.0, "XXL")]
@@ -87,7 +88,7 @@ async def recommend_frame_size(
     height = height_cm or ctx.deps.height_cm
     inseam = inseam_cm or ctx.deps.inseam_cm
     if not height and not inseam:
-        return tool_error("Weder Körpergröße noch Schrittlänge bekannt. Den Nutzer fragen oder ohne Größe beraten.")
+        return tool_error(NO_MEASUREMENTS)
     base: dict[str, Any] = {"model": model, "category": category.value} if model else {"category": category.value}
 
     if size_chart and height:

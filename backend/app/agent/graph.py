@@ -261,7 +261,7 @@ async def recommender(state: RecommenderState, runtime: Runtime[AgentDeps]) -> R
     prefetch = state.get("prefetch") or Prefetch()
     runtime.context.intake_note = prefetch.recommender_note()
     runtime.context.criteria = prefetch.criteria
-    runtime.context.ranking_due = bool(prefetch.searches)
+    runtime.context.ranking_due = prefetch.ranking_due
     try:
         async with recommender_agent.run_stream_events(
             prompt, deps=runtime.context, message_history=history, usage_limits=USAGE_LIMITS

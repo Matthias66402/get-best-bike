@@ -38,7 +38,7 @@ from app.agent.recommendation_schema import (
     ClarificationQuestion,
     TextAnswer,
 )
-from app.agent.tools.frame_size import recommend_frame_size
+from app.agent.tools.frame_size import NO_MEASUREMENTS, recommend_frame_size
 from app.agent.tools.prices import price_in_text
 from app.agent.tools.research import research_knowledge
 from app.agent.tools.web import normalize_url, read_product_page, search_bikes
@@ -51,6 +51,10 @@ RecommenderOutput = BikeRecommendation | ClarificationQuestion | TextAnswer
 # Web-Aufrufe je Antwort; danach blendet der Code das Tool aus und der Berater muss mit dem Gefundenen antworten.
 # Ohne Grenze las er bei Rose eine Backroad-Variante nach der anderen (Beratung 7: über 12 Minuten, kein Ende).
 TOOL_BUDGETS = {"search_bikes": 10, "read_product_page": 8}
+# Aufrufe von recommend_frame_size je Antwort: eines je Rad der Rangliste plus eines Reserve. Beratung 21: Nach
+# aufgebrauchtem Web-Budget nutzte das Modell es 12-mal als Ersatz-Suche ("Suche Trek Checkpoint ALR5 Preis") und
+# lief damit 15 Minuten weiter
+FRAME_SIZE_CALLS = 6
 # So oft weist der Validator eine Rangliste mit weniger als MAX_RANKING Rädern zurück, danach gilt sie
 MIN_RANKING_RETRIES = 2
 
@@ -171,8 +175,12 @@ Regeln für die Rangliste:
   `cons`.
 
 Fragen ohne Bedarf an einer Rangliste (z. B. "Was ist ein Gravelbike?", "Erklär mir Platz 2 genauer") beantwortest
-Du mit `answer_user`. Funktioniert die Websuche nicht, sag das mit `answer_user` und gib allgemeine Hinweise aus der
-Wissensbasis, statt Modelle zu erfinden. Rufe unabhängige Tools immer gemeinsam in einer Runde auf.
+Du mit `answer_user`. Scheitert eine einzelne Suche oder ein Seitenabruf (z. B. Netzwerkfehler, Seite nicht
+lesbar, keine Treffer), wiederhole die Suche einmal bzw. nimm einen anderen Treffer; das ist kein Ausfall der
+Websuche. Fehler und Aussagen aus früheren Antworten beschreiben nicht den jetzigen Zustand: Suche neu. Nur wenn in
+dieser Antwort mehrere Aufrufe hintereinander mit Netzwerkfehlern scheitern, sag das mit `answer_user` und gib
+allgemeine Hinweise aus der Wissensbasis, statt Modelle zu erfinden. Rufe unabhängige Tools immer gemeinsam in einer
+Runde auf.
 Deine Ausgabe beendet die Antwort: Kündige nie an, dass Du noch recherchierst, sondern recherchiere und gib dann
 die Rangliste aus.
 Je Antwort hast Du höchstens {TOOL_BUDGETS["search_bikes"]} Websuchen und {TOOL_BUDGETS["read_product_page"]} Seitenabrufe;
@@ -240,6 +248,32 @@ async def within_budget(ctx: RunContext[AgentDeps], tool_def: ToolDefinition) ->
     return tool_def if calls_in_run(ctx.messages, tool_def.name) < TOOL_BUDGETS[tool_def.name] else None
 
 
+def failed_without_measurements(messages: list[ModelMessage]) -> bool:
+    """Ist `recommend_frame_size` in dieser Antwort schon an fehlenden Körpermaßen gescheitert?"""
+    return any(
+        isinstance(content, dict) and content.get("error") == NO_MEASUREMENTS
+        for content in tool_returns(current_run(messages), "recommend_frame_size")
+    )
+
+
+async def frame_size_budget(ctx: RunContext[AgentDeps], tool_def: ToolDefinition) -> ToolDefinition | None:
+    """Blendet `recommend_frame_size` nach FRAME_SIZE_CALLS Aufrufen in dieser Antwort aus, und schon nach dem ersten
+    Fehlschlag mangels Körpermaßen, wenn weder Profil noch Intake Maße kennen. Beratung 22: Mit aufgebrauchtem
+    Web-Budget war es das einzige verbliebene Tool; das Modell rief es sechsmal ohne Maße auf, statt auszugeben."""
+    deps = ctx.deps
+    measured = deps.height_cm or deps.inseam_cm or deps.criteria.get("height_cm") or deps.criteria.get("inseam_cm")
+    if not measured and failed_without_measurements(ctx.messages):
+        return None
+    return tool_def if calls_in_run(ctx.messages, tool_def.name) < FRAME_SIZE_CALLS else None
+
+
+WEB_BUDGET_USED_NOTE = (
+    "Websuchen und Seitenabrufe dieser Antwort sind aufgebraucht. Gib jetzt die Rangliste mit `final_recommendation` "
+    "aus den gefundenen Seiten aus; Preise, die keine Seite belegt, setzt Du auf null und nennst das in "
+    "`buying_tips`. Rufe keine anderen Tools als Ersatz für eine Suche auf."
+)
+
+
 async def research_once(ctx: RunContext[AgentDeps], tool_def: ToolDefinition) -> ToolDefinition | None:
     """Blendet `research_knowledge` aus, sobald in dieser Beratung recherchiert wurde (auch vorab durch den Graphen).
 
@@ -261,7 +295,11 @@ def output_rejected(messages: list[ModelMessage], tool_name: str) -> bool:
     )
 
 
-def check_sources(output: BikeRecommendation, pages: dict[str, str]) -> None:
+def check_sources(output: BikeRecommendation, pages: dict[str, str], web_budget: bool = True) -> None:
+    """`web_budget=False`, wenn Websuchen und Seitenabrufe dieser Antwort aufgebraucht sind: Dann ließe sich nichts
+    mehr nachsuchen. Fehlende Preise gelten, und für unbelegte Räder heißt die Rückmeldung „streichen“ statt
+    „suchen“ (Beratung 22: Das Modell wollte das Radon per Suche ersetzen, fand kein Such-Tool mehr und lief in
+    eine Schleife)."""
     if not pages:
         raise ModelRetry(
             "Die Rangliste braucht Belege aus der Websuche. Suche mit `search_bikes` nach passenden Modellen; "
@@ -310,14 +348,21 @@ def check_sources(output: BikeRecommendation, pages: dict[str, str]) -> None:
                 "Übernimm den Preis von der Seite (`prices_eur`), lies die Produktseite mit `read_product_page` "
                 "oder setze null."
             )
-        if bike.price_eur is None and bike.rank <= PRICED_RANKS:
+        if bike.price_eur is None and bike.rank <= PRICED_RANKS and web_budget:
             problems.append(
                 f"{name}: Für Platz 1 bis {PRICED_RANKS} braucht es einen belegten Preis. Suche das Modell mit "
                 "`search_bikes` (Modellname + Preis) und lies ein Angebot mit `read_product_page`; findest Du "
                 "keinen Preis, ersetze das Rad oder setze es weiter nach hinten."
             )
     if problems:
-        raise ModelRetry("Nicht belegte Angaben in der Rangliste:\n- " + "\n- ".join(problems))
+        message = "Nicht belegte Angaben in der Rangliste:\n- " + "\n- ".join(problems)
+        if not web_budget:
+            message += (
+                "\nWebsuchen und Seitenabrufe sind aufgebraucht, suche nicht weiter: Korrigiere die Angaben anhand "
+                "der gelesenen Seiten oder streiche die betroffenen Räder und rücke die übrigen auf; eine kürzere "
+                "Rangliste ist in Ordnung."
+            )
+        raise ModelRetry(message)
 
 
 def check_budget(output: BikeRecommendation) -> None:
@@ -405,7 +450,8 @@ def check_answer_needed(ctx: RunContext[AgentDeps]) -> None:
 
 def check_frame_sizes(output: BikeRecommendation, deps: AgentDeps, messages: list[ModelMessage]) -> None:
     measured = output.requirements.height_cm or output.requirements.inseam_cm or deps.height_cm or deps.inseam_cm
-    if not measured:
+    # Das Tool kannte keine Maße (und ist dann ausgeblendet): eine Größe ließe sich nicht mehr bestimmen
+    if not measured or failed_without_measurements(messages):
         return
     needs_size = [b for b in output.ranking if b.category not in NO_FRAME_SIZE]
     if needs_size and not used_tool(messages, "recommend_frame_size"):
@@ -446,7 +492,7 @@ def build_agent() -> Agent[AgentDeps, RecommenderOutput]:
         tools=[
             Tool(search_bikes, prepare=within_budget),
             Tool(read_product_page, prepare=within_budget),
-            Tool(recommend_frame_size),
+            Tool(recommend_frame_size, prepare=frame_size_budget),
             Tool(research_knowledge, prepare=research_once),
         ],
         retries=3,
@@ -467,6 +513,8 @@ def build_agent() -> Agent[AgentDeps, RecommenderOutput]:
             lines.append("Die Websuche ist nicht eingerichtet; eine Rangliste ist daher nicht möglich.")
         if deps.intake_note:
             lines.append(deps.intake_note)
+        if deps.settings.tavily_api_key and not web_budget_left(ctx.messages):
+            lines.append(WEB_BUDGET_USED_NOTE)
         return "\n".join(lines)
 
     @agent.output_validator
@@ -493,7 +541,7 @@ def build_agent() -> Agent[AgentDeps, RecommenderOutput]:
                 "Kategorie und zum Einsatzzweck und berücksichtige die Hinweise."
             )
         check_ranking_size(output, ctx)
-        check_sources(output, known_pages(ctx.messages))
+        check_sources(output, known_pages(ctx.messages), web_budget=web_budget_left(ctx.messages))
         check_budget(output)
         check_spec_notes(output)
         check_electric(output)

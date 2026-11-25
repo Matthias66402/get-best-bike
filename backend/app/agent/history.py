@@ -55,6 +55,11 @@ def researched_categories(history_json: list[Any]) -> set[str | None]:
     return categories
 
 
+def searched_web(history_json: list[Any]) -> bool:
+    """Hat die Beratung schon im Web gesucht (Berater oder Vorab-Aufruf)?"""
+    return any(call.get("tool_name") == "search_bikes" for call in tool_calls(history_json))
+
+
 def researched_for(history_json: list[Any], category: str) -> bool:
     categories = researched_categories(history_json)
     return None in categories or category in categories

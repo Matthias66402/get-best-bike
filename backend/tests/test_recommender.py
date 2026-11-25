@@ -1,5 +1,6 @@
 """Berater, Output-Validator und Chat-Endpunkt mit geskriptetem Modell statt echtem LLM; Tavily per respx."""
 
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -12,6 +13,7 @@ from pydantic_ai import (
     ModelRetry,
     RetryPromptPart,
     ToolCallPart,
+    ToolDefinition,
     ToolReturnPart,
     UserPromptPart,
 )
@@ -29,15 +31,18 @@ from app.agent.recommendation_schema import (
     clean_name,
 )
 from app.agent.recommender import (
+    FRAME_SIZE_CALLS,
     INSTRUCTIONS,
     PRICED_RANKS,
     category_conflict,
     check_sources,
     check_spec_notes,
+    frame_size_budget,
     known_pages,
     model_on_page,
     recommender_agent,
 )
+from app.agent.tools.frame_size import NO_MEASUREMENTS
 from app.agent.tools.web import normalize_url
 from app.config import get_settings
 from app.db import SessionLocal
@@ -259,6 +264,52 @@ def test_top_ranks_need_a_price() -> None:
     for rank in range(PRICED_RANKS + 1, MAX_RANKING + 1):
         ranking[rank - 1] = bike(rank, price=None)
     check_sources(BikeRecommendation.model_validate(recommendation(*ranking)), pages)
+
+
+def test_no_price_required_once_web_budget_is_used() -> None:
+    """Beratung 21: Ohne Web-Budget ließ sich der Preis nicht mehr belegen; die Forderung hielt den Lauf 15 Minuten
+    in einer Schleife."""
+    pages = {normalize_url(CUBE_URL): "Cube Kathmandu Hybrid Pro 750 Variante Trekking, 3.299 €"}
+    ranking = [bike(i, price=3299 if i != 2 else None) for i in range(1, MAX_RANKING + 1)]
+    check_sources(BikeRecommendation.model_validate(recommendation(*ranking)), pages, web_budget=False)
+
+
+def test_unbelegtes_rad_streichen_statt_suchen_ohne_web_budget() -> None:
+    """Beratung 22: Ohne Such-Tool wollte das Modell ein unbelegtes Rad per Suche ersetzen und lief in eine Schleife."""
+    unknown = BikeRecommendation.model_validate(recommendation(bike(1, url="https://www.example-shop.de/unbekannt")))
+    with pytest.raises(ModelRetry) as with_budget:
+        check_sources(unknown, {normalize_url(CUBE_URL): "Cube"})
+    assert "streiche" not in str(with_budget.value)
+    with pytest.raises(ModelRetry) as without_budget:
+        check_sources(unknown, {normalize_url(CUBE_URL): "Cube"}, web_budget=False)
+    assert "suche nicht weiter" in str(without_budget.value) and "streiche" in str(without_budget.value)
+
+
+async def test_frame_size_tool_hidden_after_budget() -> None:
+    tool_def = ToolDefinition(name="recommend_frame_size")
+
+    def ctx(calls: int, deps: Any = None) -> Any:
+        response = ModelResponse(parts=[ToolCallPart("recommend_frame_size", {}) for _ in range(calls)])
+        deps = deps or SimpleNamespace(height_cm=172, inseam_cm=None, criteria={})
+        return SimpleNamespace(messages=[ModelRequest(parts=[UserPromptPart("Gravelbike")]), response], deps=deps)
+
+    assert await frame_size_budget(ctx(FRAME_SIZE_CALLS - 1), tool_def) is tool_def
+    assert await frame_size_budget(ctx(FRAME_SIZE_CALLS), tool_def) is None
+
+
+async def test_frame_size_tool_hidden_after_failing_without_measurements() -> None:
+    """Beratung 22: sechs Aufrufe ohne Körpermaße, jeder mit demselben Fehler."""
+    tool_def = ToolDefinition(name="recommend_frame_size")
+    unmeasured = SimpleNamespace(height_cm=None, inseam_cm=None, criteria={})
+    prompt = ModelRequest(parts=[UserPromptPart("Gravelbike")])
+    call = ModelResponse(parts=[ToolCallPart("recommend_frame_size", {}, tool_call_id="c1")])
+    failed = ModelRequest(parts=[ToolReturnPart("recommend_frame_size", {"error": NO_MEASUREMENTS}, tool_call_id="c1")])
+    assert await frame_size_budget(SimpleNamespace(messages=[prompt], deps=unmeasured), tool_def) is tool_def
+    after_failure = [prompt, call, failed]
+    assert await frame_size_budget(SimpleNamespace(messages=after_failure, deps=unmeasured), tool_def) is None
+    # Mit Maßen aus dem Intake bleibt es verfügbar (z. B. wenn das Modell sie nur nicht übergeben hatte)
+    measured = SimpleNamespace(height_cm=None, inseam_cm=None, criteria={"height_cm": 172})
+    assert await frame_size_budget(SimpleNamespace(messages=after_failure, deps=measured), tool_def) is tool_def
 
 
 async def test_ranking_needs_five_bikes(monkeypatch: pytest.MonkeyPatch) -> None:
