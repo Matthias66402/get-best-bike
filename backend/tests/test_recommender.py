@@ -35,6 +35,8 @@ from app.agent.recommender import (
     INSTRUCTIONS,
     PRICED_RANKS,
     category_conflict,
+    check_placeholders,
+    check_ranking_size,
     check_sources,
     check_spec_notes,
     frame_size_budget,
@@ -616,3 +618,63 @@ async def test_frame_size_tool_lists_sizes_already_determined() -> None:
     messages = [ModelRequest(parts=[UserPromptPart("Kinderrad")]), call, done]
     prepared = await frame_size_budget(SimpleNamespace(messages=messages, deps=deps), tool_def)
     assert prepared is not None and "kids: 24 Zoll" in (prepared.description or "")
+
+
+def test_rejected_question_does_not_count_for_ranking_size(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Beratung 26: Rückfrage und eine Rangliste abgelehnt, dann galt ein einzelnes Rad mit „dummy“ als fertig."""
+    monkeypatch.setattr("app.agent.recommender.MIN_RANKING_RETRIES", 2)
+    prompt = ModelRequest(parts=[UserPromptPart("Gravelbike bis 2500 €")])
+    rejected = ModelRequest(
+        parts=[
+            RetryPromptPart("nein", tool_name="ask_user", tool_call_id="q"),
+            RetryPromptPart("nein", tool_name="final_recommendation", tool_call_id="r"),
+        ]
+    )
+    search = ModelResponse(parts=[ToolCallPart("search_bikes", {}, tool_call_id="s")])
+    ctx = SimpleNamespace(messages=[prompt, search, rejected], retry=2, max_retries=3)
+    with pytest.raises(ModelRetry, match="es fehlen 4"):
+        check_ranking_size(BikeRecommendation.model_validate(recommendation()), ctx)
+    # Letzter Versuch: eine kürzere Liste gilt, damit die Antwort nicht scheitert
+    check_ranking_size(
+        BikeRecommendation.model_validate(recommendation()), SimpleNamespace(**{**vars(ctx), "retry": 3})
+    )
+
+
+def test_placeholder_texts_are_rejected() -> None:
+    dummy = BikeRecommendation.model_validate(recommendation() | {"summary": "dummy"})
+    with pytest.raises(ModelRetry, match="Platzhalter"):
+        check_placeholders(dummy)
+    check_placeholders(BikeRecommendation.model_validate(recommendation()))
+
+
+async def test_parallel_calls_cannot_exceed_budget(monkeypatch: pytest.MonkeyPatch, tavily: respx.MockRouter) -> None:
+    """Beratung 26: 11 statt 8 Seitenabrufe, weil das Budget nur vor einer Runde galt."""
+    monkeypatch.setattr("app.agent.recommender.TOOL_BUDGETS", {"search_bikes": 2, "read_product_page": 8})
+    searches = [("search_bikes", {"query": f"Trekking E-Bike {i}"}) for i in range(3)]
+    result = await run(searches, RESEARCH, FRAME, ("final_recommendation", recommendation()))
+    returns = [
+        part.content
+        for message in result.all_messages()
+        if isinstance(message, ModelRequest)
+        for part in message.parts
+        if isinstance(part, ToolReturnPart) and part.tool_name == "search_bikes"
+    ]
+    assert len(returns) == 3 and tavily.routes[0].call_count == 2
+    assert sum("Budget" in str(content) for content in returns) == 1
+
+
+async def test_frame_size_tool_hidden_after_rounds() -> None:
+    """Beratung 26: fünf Runden mit je einem Aufruf statt einer Runde mit allen."""
+    tool_def = ToolDefinition(name="recommend_frame_size")
+    deps = SimpleNamespace(height_cm=172, inseam_cm=None, criteria={})
+
+    def round_(i: int) -> list[Any]:
+        call = ToolCallPart("recommend_frame_size", {"category": "gravel"}, tool_call_id=f"c{i}")
+        done = ToolReturnPart("recommend_frame_size", {"category": "gravel", "size": "M"}, tool_call_id=f"c{i}")
+        return [ModelResponse(parts=[call]), ModelRequest(parts=[done])]
+
+    prompt = ModelRequest(parts=[UserPromptPart("Gravelbike")])
+    one_round = SimpleNamespace(messages=[prompt, *round_(1)], deps=deps)
+    assert await frame_size_budget(one_round, tool_def) is not None
+    two_rounds = SimpleNamespace(messages=[prompt, *round_(1), *round_(2)], deps=deps)
+    assert await frame_size_budget(two_rounds, tool_def) is None

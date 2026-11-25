@@ -18,6 +18,7 @@ from pydantic_ai import (
     ModelMessage,
     ModelMessagesTypeAdapter,
     ModelRequest,
+    ModelResponse,
     ModelRetry,
     RetryPromptPart,
     RunContext,
@@ -28,6 +29,7 @@ from pydantic_ai import (
     ToolReturnPart,
     UserPromptPart,
 )  # fmt: skip
+from pydantic_ai.capabilities import Hooks
 
 from app.agent.compaction import compact_earlier_messages
 from app.agent.deps import AgentDeps
@@ -41,6 +43,7 @@ from app.agent.recommendation_schema import (
     RankedBike,
     TextAnswer,
 )
+from app.agent.tools.common import tool_error
 from app.agent.tools.frame_size import NO_MEASUREMENTS, recommend_frame_size
 from app.agent.tools.prices import price_in_text
 from app.agent.tools.research import research_knowledge
@@ -58,6 +61,9 @@ TOOL_BUDGETS = {"search_bikes": 10, "read_product_page": 8}
 # aufgebrauchtem Web-Budget nutzte das Modell es 12-mal als Ersatz-Suche ("Suche Trek Checkpoint ALR5 Preis") und
 # lief damit 15 Minuten weiter
 FRAME_SIZE_CALLS = 6
+# Runden mit recommend_frame_size je Antwort. Beratung 26: fünf Runden mit je einem Aufruf statt einer mit allen,
+# je Runde ein Modellaufruf (rund eine Minute insgesamt); eine zweite Runde bleibt für ersetzte Räder
+FRAME_SIZE_ROUNDS = 2
 # So oft weist der Validator eine Rangliste mit weniger als MAX_RANKING Rädern zurück, danach gilt sie
 MIN_RANKING_RETRIES = 2
 
@@ -273,11 +279,48 @@ async def frame_size_budget(ctx: RunContext[AgentDeps], tool_def: ToolDefinition
         return None
     if calls_in_run(ctx.messages, tool_def.name) >= FRAME_SIZE_CALLS:
         return None
+    if rounds_in_run(ctx.messages, tool_def.name) >= FRAME_SIZE_ROUNDS:
+        return None
     if known := determined_sizes(ctx.messages):
         # Beratung 24: nach jeder Zurückweisung derselbe Aufruf (Kinderrad, 126 cm), je eine Modellrunde
-        note = "Schon ermittelt (gilt weiter, nicht erneut aufrufen): " + "; ".join(known) + "."
+        note = (
+            "Schon ermittelt (gilt weiter, nicht erneut aufrufen): " + "; ".join(known) + ". Weitere Größen nur für "
+            "neue Räder, alle zusammen in dieser Runde."
+        )
         return replace(tool_def, description=f"{tool_def.description}\n\n{note}")
     return tool_def
+
+
+def rounds_in_run(messages: list[ModelMessage], tool_name: str) -> int:
+    """Modellantworten dieser Antwort, die `tool_name` aufrufen (parallele Aufrufe zählen als eine Runde)."""
+    return sum(
+        isinstance(message, ModelResponse)
+        and any(isinstance(part, ToolCallPart) and part.tool_name == tool_name for part in message.parts)
+        for message in current_run(messages)
+    )
+
+
+async def enforce_budgets(
+    ctx: RunContext[AgentDeps], *, call: ToolCallPart, tool_def: ToolDefinition, args: Any, handler: Any
+) -> Any:
+    """Setzt TOOL_BUDGETS auch innerhalb einer Runde durch. `within_budget` blendet ein Tool erst vor der nächsten
+    Runde aus; parallele Aufrufe einer Runde konnten das Budget überschreiten (Beratung 26: 11 statt 8 Seitenabrufe).
+    Aufrufe über dem Budget laufen nicht und bekommen einen Tool-Fehler."""
+    limit = TOOL_BUDGETS.get(call.tool_name)
+    if limit is not None:
+        ids = [
+            part.tool_call_id
+            for message in current_run(ctx.messages)
+            if isinstance(message, ModelResponse)
+            for part in message.parts
+            if isinstance(part, ToolCallPart) and part.tool_name == call.tool_name
+        ]
+        if call.tool_call_id in ids and ids.index(call.tool_call_id) >= limit:
+            return tool_error(
+                f"Budget von {limit} Aufrufen für `{call.tool_name}` in dieser Antwort ist aufgebraucht; nutze die "
+                "bisherigen Ergebnisse."
+            )
+    return await handler(args)
 
 
 def determined_sizes(messages: list[ModelMessage]) -> list[str]:
@@ -307,15 +350,20 @@ async def research_once(ctx: RunContext[AgentDeps], tool_def: ToolDefinition) ->
     return None if researched_categories(history_json) else tool_def
 
 
-def output_rejected(messages: list[ModelMessage], tool_name: str) -> bool:
-    """Wurde in dieser Antwort schon eine Ausgabe über `tool_name` zurückgewiesen?"""
-    return any(
+def rejections(messages: list[ModelMessage], tool_name: str) -> int:
+    """Wie oft wurde in dieser Antwort eine Ausgabe über `tool_name` zurückgewiesen?"""
+    return sum(
         getattr(part, "tool_name", None) == tool_name
         and (isinstance(part, RetryPromptPart) or (isinstance(part, ToolReturnPart) and part.outcome == "retried"))
         for message in current_run(messages)
         if isinstance(message, ModelRequest)
         for part in message.parts
     )
+
+
+def output_rejected(messages: list[ModelMessage], tool_name: str) -> bool:
+    """Wurde in dieser Antwort schon eine Ausgabe über `tool_name` zurückgewiesen?"""
+    return rejections(messages, tool_name) > 0
 
 
 def check_sources(output: BikeRecommendation, pages: dict[str, str], web_budget: bool = True) -> None:
@@ -432,15 +480,39 @@ def check_electric(output: BikeRecommendation) -> None:
 
 
 def check_ranking_size(output: BikeRecommendation, ctx: RunContext[AgentDeps]) -> None:
-    """Die Ergebnisseite zeigt MAX_RANKING Räder. Weniger nur, wenn das Web-Budget aufgebraucht ist oder schon
-    MIN_RANKING_RETRIES-mal zurückgewiesen wurde, damit die Antwort nicht an der Wiederholungsgrenze scheitert."""
+    """Die Ergebnisseite zeigt MAX_RANKING Räder. Weniger nur, wenn das Web-Budget aufgebraucht ist, schon
+    MIN_RANKING_RETRIES Ranglisten zurückgewiesen wurden oder der letzte Versuch läuft, damit die Antwort nicht an
+    der Wiederholungsgrenze scheitert.
+
+    Gezählt werden nur zurückgewiesene Ranglisten, nicht ctx.retry: Beratung 26 zählte eine abgelehnte Rückfrage
+    mit, schon nach einer abgelehnten Rangliste galt die Regel nicht mehr, und das Modell gab ein einziges Rad mit der
+    Zusammenfassung „dummy“ aus."""
     missing = MAX_RANKING - len(output.ranking)
-    if missing <= 0 or ctx.retry >= MIN_RANKING_RETRIES or not web_budget_left(ctx.messages):
+    if (
+        missing <= 0
+        or rejections(ctx.messages, "final_recommendation") >= MIN_RANKING_RETRIES
+        or ctx.retry >= ctx.max_retries
+        or not web_budget_left(ctx.messages)
+    ):
         return
     raise ModelRetry(
         f"Die Rangliste soll {MAX_RANKING} Räder enthalten, es fehlen {missing}. Ergänze passende Kandidaten aus "
         f"der Websuche; Plätze {PRICED_RANKS + 1} bis {MAX_RANKING} dürfen ohne Preis sein (price_eur = null)."
     )
+
+
+PLACEHOLDER = re.compile(r"(dummy|placeholder|platzhalter|lorem|ipsum|todo|tbd|test|xxx)", re.IGNORECASE)
+
+
+def check_placeholders(output: BikeRecommendation) -> None:
+    """Beratung 26: Rangliste mit der Zusammenfassung „dummy“."""
+    fields = {"title": output.title, "summary": output.summary}
+    fields |= {f"Platz {b.rank} why_fits": b.why_fits for b in output.ranking}
+    if bad := [name for name, text in fields.items() if len(text.strip()) < 10 or PLACEHOLDER.fullmatch(text.strip())]:
+        raise ModelRetry(
+            f"Platzhalter statt Inhalt in {', '.join(bad)}. Schreibe echte Texte: Was gesucht war, warum Platz 1 "
+            "vorn liegt und warum jedes Rad passt."
+        )
 
 
 def check_question_needed(output: ClarificationQuestion, ctx: RunContext[AgentDeps]) -> None:
@@ -579,7 +651,7 @@ def build_agent() -> Agent[AgentDeps, RecommenderOutput]:
             Tool(research_knowledge, prepare=research_once),
         ],
         retries=3,
-        capabilities=[compact_earlier_messages],
+        capabilities=[compact_earlier_messages, Hooks(tool_execute=enforce_budgets)],
         defer_model_check=True,
     )
 
@@ -618,7 +690,9 @@ def build_agent() -> Agent[AgentDeps, RecommenderOutput]:
         if not isinstance(output, BikeRecommendation):
             return output
         global_problems = collect_problems(
-            lambda: check_researched(ctx.messages), lambda: check_ranking_size(output, ctx)
+            lambda: check_researched(ctx.messages),
+            lambda: check_ranking_size(output, ctx),
+            lambda: check_placeholders(output),
         )
         problems = global_problems + bike_problems(output, ctx)
         if not problems:
