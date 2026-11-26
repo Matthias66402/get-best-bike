@@ -135,7 +135,7 @@ async def read_product_page(ctx: RunContext[AgentDeps], url: str) -> dict[str, A
     Rufe es für mehrere Kandidaten in derselben Runde auf.
 
     Args:
-        url: Vollständige URL, am besten aus `search_bikes`.
+        url: Vollständige URL aus den Ergebnissen von `search_bikes` (selbst gebaute URLs werden abgelehnt).
     """
     deps = ctx.deps
     if not deps.settings.tavily_api_key:

@@ -29,7 +29,7 @@ from pydantic_ai import (
     ToolReturnPart,
     UserPromptPart,
 )  # fmt: skip
-from pydantic_ai.capabilities import Hooks
+from pydantic_ai.capabilities import Hooks, PrepareOutputTools
 
 from app.agent.compaction import compact_earlier_messages
 from app.agent.deps import AgentDeps
@@ -157,7 +157,8 @@ Vorgehen:
 3. Kandidaten finden mit `search_bikes`: 2-3 Suchen in derselben Runde, z. B. nach Tests bzw. Bestenlisten der
    Kategorie im Budget und nach konkreten Modellen. Nur Modelle aus den Ergebnissen, nichts aus dem Gedächtnis.
 4. Belegen mit `read_product_page` für die aussichtsreichsten Kandidaten (alle in derselben Runde): Preis,
-   Ausstattung, Gewicht und, falls vorhanden, die Größentabelle.
+   Ausstattung, Gewicht und, falls vorhanden, die Größentabelle. Nur URLs aus den Suchergebnissen; selbst
+   zusammengesetzte URLs lehnt das Tool ab. Fehlt eine Produktseite, suche mit `search_bikes` nach dem Modell.
 5. Rahmengröße mit `recommend_frame_size` je Rad (mit Größentabelle der Produktseite, falls vorhanden), alle in
    derselben Runde, sobald Körpermaße bekannt sind (Nachricht oder Profil). `frame_size` muss zum Rad passen:
    Wünscht der Nutzer ausdrücklich eine Größe (z. B. 24 Zoll) und nennt das Tool sie als `alternative`, trage sie
@@ -244,12 +245,69 @@ def current_run(messages: list[ModelMessage]) -> list[ModelMessage]:
     return messages[starts[-1] :] if starts else messages
 
 
-def calls_in_run(messages: list[ModelMessage], tool_name: str) -> int:
-    return sum(
-        isinstance(part, ToolCallPart) and part.tool_name == tool_name
+# Seitenabrufe nur für URLs aus der Websuche (oder vom Nutzer genannt); andere lädt der Code nicht. Beratung 29: sechs
+# von neun Abrufen gingen an selbst gebaute URLs (404), danach war das Budget weg und es kam keine Rangliste. Die
+# ersten FREE_UNKNOWN_URLS solcher Aufrufe je Antwort zählen nicht aufs Budget, weitere schon (sonst gäbe es keine
+# Grenze).
+FREE_UNKNOWN_URLS = 3
+URL_IN_TEXT = re.compile(r"https?://[^\s<>\"'()\[\]]+")
+
+
+def readable_urls(messages: list[ModelMessage]) -> set[str]:
+    """Normalisierte URLs, die `read_product_page` laden darf: aus `search_bikes` bzw. `read_product_page` dieser
+    Beratung oder aus einer Nachricht des Nutzers."""
+    urls = set(known_pages(messages))
+    for message in messages:
+        if isinstance(message, ModelRequest):
+            for part in message.parts:
+                if isinstance(part, UserPromptPart) and isinstance(part.content, str):
+                    urls.update(normalize_url(url) for url in URL_IN_TEXT.findall(part.content))
+    return urls
+
+
+def similar_urls(url: str, readable: set[str], limit: int = 3) -> list[str]:
+    """Bekannte URLs, die zur abgelehnten passen: gemeinsame Wörter im Pfad, sonst gleicher Shop bzw. Hersteller."""
+    parts = urlsplit(url)
+    host = parts.netloc.lower().removeprefix("www.")
+    tokens = {w for w in words(parts.path) if len(w) >= 3 and not w.isdigit()}
+
+    def score(candidate: str) -> tuple[int, int]:
+        other = urlsplit(candidate)
+        return len(tokens & set(words(other.path))), int(other.netloc.removeprefix("www.") == host)
+
+    return sorted((u for u in readable if any(score(u))), key=score, reverse=True)[:limit]
+
+
+def page_url(call: ToolCallPart) -> str:
+    try:
+        return str(call.args_as_dict().get("url") or "")
+    except ValueError:  # Argumente kein gültiges JSON
+        return ""
+
+
+def budget_calls(messages: list[ModelMessage], tool_name: str) -> list[ToolCallPart]:
+    """Aufrufe von `tool_name` in dieser Antwort, die aufs Budget zählen."""
+    calls = [
+        part
         for message in current_run(messages)
-        for part in getattr(message, "parts", [])
-    )
+        if isinstance(message, ModelResponse)
+        for part in message.parts
+        if isinstance(part, ToolCallPart) and part.tool_name == tool_name
+    ]
+    if tool_name != "read_product_page":
+        return calls
+    readable = readable_urls(messages)
+    counted, free = [], FREE_UNKNOWN_URLS
+    for call in calls:
+        if free and normalize_url(page_url(call)) not in readable:
+            free -= 1
+            continue
+        counted.append(call)
+    return counted
+
+
+def calls_in_run(messages: list[ModelMessage], tool_name: str) -> int:
+    return len(budget_calls(messages, tool_name))
 
 
 def web_budget_left(messages: list[ModelMessage]) -> bool:
@@ -305,16 +363,25 @@ async def enforce_budgets(
 ) -> Any:
     """Setzt TOOL_BUDGETS auch innerhalb einer Runde durch. `within_budget` blendet ein Tool erst vor der nächsten
     Runde aus; parallele Aufrufe einer Runde konnten das Budget überschreiten (Beratung 26: 11 statt 8 Seitenabrufe).
-    Aufrufe über dem Budget laufen nicht und bekommen einen Tool-Fehler."""
+    Aufrufe über dem Budget laufen nicht und bekommen einen Tool-Fehler, ebenso Seitenabrufe für URLs, die nicht aus
+    der Websuche stammen (siehe FREE_UNKNOWN_URLS)."""
+    if call.tool_name == "read_product_page":
+        url, readable = page_url(call), readable_urls(ctx.messages)
+        if normalize_url(url) not in readable:
+            # Beratung 30: Das Modell baute trotz Ablehnung weiter URLs, eine davon zweimal; deshalb gleich Vorschläge
+            suggestions = similar_urls(url, readable)
+            hint = (
+                "Passende Treffer aus der Suche: " + ", ".join(suggestions) + "."
+                if suggestions
+                else "Für dieses Modell gibt es noch keinen Treffer: Suche es mit `search_bikes`."
+            )
+            return tool_error(
+                f"Die URL {url} stammt nicht aus `search_bikes` und wird nicht geladen; selbst zusammengesetzte URLs "
+                f"führen meist ins Leere (404). {hint}"
+            )
     limit = TOOL_BUDGETS.get(call.tool_name)
     if limit is not None:
-        ids = [
-            part.tool_call_id
-            for message in current_run(ctx.messages)
-            if isinstance(message, ModelResponse)
-            for part in message.parts
-            if isinstance(part, ToolCallPart) and part.tool_name == call.tool_name
-        ]
+        ids = [part.tool_call_id for part in budget_calls(ctx.messages, call.tool_name)]
         if call.tool_call_id in ids and ids.index(call.tool_call_id) >= limit:
             return tool_error(
                 f"Budget von {limit} Aufrufen für `{call.tool_name}` in dieser Antwort ist aufgebraucht; nutze die "
@@ -338,6 +405,31 @@ WEB_BUDGET_USED_NOTE = (
     "aus den gefundenen Seiten aus; Preise, die keine Seite belegt, setzt Du auf null und nennst das in "
     "`buying_tips`. Rufe keine anderen Tools als Ersatz für eine Suche auf."
 )
+
+
+def ranking_only(ctx: RunContext[AgentDeps]) -> bool:
+    """Steht eine Rangliste an und gibt es gelesene Seiten, bleibt nur die Rangliste als Ausgabe, sobald die Web-Tools
+    aufgebraucht sind oder in dieser Antwort schon eine Rückfrage bzw. Textantwort zurückgewiesen wurde.
+
+    Beratung 29: Mit leerem Web-Budget fragte das Modell erst per `ask_user`, dann per `answer_user`, ob es weiter
+    suchen darf; die zweite Textantwort beendete den Lauf ohne Rangliste. Beratung 30: Nach einer Rangliste mit fünf
+    Mängeln wich es auf „Soll ich recherchieren?“ aus, die zweite Rückfrage galt. Mit nur noch der Rangliste kann es
+    nicht ausweichen, und unbelegte Räder streicht der Validator. Im letzten Versuch stehen wieder alle Ausgaben
+    offen, damit der Lauf nicht an der Wiederholungsgrenze scheitert."""
+    evaded = output_rejected(ctx.messages, "ask_user") or output_rejected(ctx.messages, "answer_user")
+    return (
+        ctx.deps.ranking_due
+        and bool(ctx.deps.settings.tavily_api_key)
+        and (evaded or not web_budget_left(ctx.messages))
+        and bool(known_pages(ctx.messages))
+        and ctx.retry < ctx.max_retries
+    )
+
+
+async def offer_outputs(ctx: RunContext[AgentDeps], tool_defs: list[ToolDefinition]) -> list[ToolDefinition]:
+    if ranking_only(ctx):
+        return [tool_def for tool_def in tool_defs if tool_def.name == "final_recommendation"]
+    return tool_defs
 
 
 async def research_once(ctx: RunContext[AgentDeps], tool_def: ToolDefinition) -> ToolDefinition | None:
@@ -408,7 +500,10 @@ def check_sources(output: BikeRecommendation, pages: dict[str, str], web_budget:
             continue
         # Kategorie und Preis im Umfeld des Modells: Testartikel nennen mehrere Räder mit eigener Kategorie und Preis
         context = model_context(bike.model, text)
-        if others := category_conflict(bike.category, context):
+        # Der URL-Pfad ordnet das Rad oft ein, ohne dass der Seitentext die Kategorie nennt. Beratung 30: Die
+        # Rose-Seite /bikes/gravel/.../backroad-al nannte „Gravel“ nicht, wohl aber den Reifen „Continental Grand Prix
+        # Urban“; das Backroad galt deshalb als City-Rad
+        if others := category_conflict(bike.category, f"{urlsplit(bike.price_source_url).path}\n{context}"):
             problems.append(
                 f"{name}: Die Quelle beschreibt das Rad als {', '.join(others)}, nicht als {bike.category.value}. "
                 "Setze die richtige Kategorie und prüfe, ob das Rad dann noch zum Wunsch passt; sonst ersetze es."
@@ -521,6 +616,13 @@ def check_question_needed(output: ClarificationQuestion, ctx: RunContext[AgentDe
     Budget und Motor in der Anfrage standen. Zählte jede frühere Zurückweisung (auch einer Rangliste), wich das
     Modell auf eine Rückfrage aus (Beratung 8: "Ist Carbon ein Muss?" nach einer abgelehnten Rangliste)."""
     criteria = ctx.deps.criteria
+    if ctx.deps.ranking_due and not output.missing_fields and ctx.retry < ctx.max_retries:
+        # Beratung 30: „Soll ich jetzt fünf Neuräder recherchieren?“ ohne fehlende Angabe, als Ausweg nach Mängeln
+        raise ModelRetry(
+            "Die Rückfrage nennt keine fehlende Angabe (`missing_fields` ist leer), der Nutzer wartet auf die "
+            "Rangliste. Frage nicht, ob Du recherchieren sollst, sondern gib die Rangliste mit `final_recommendation` "
+            "aus den gefundenen Seiten aus; offene Punkte gehören in `buying_tips`."
+        )
     if output_rejected(ctx.messages, "ask_user") or not criteria.get("use_case") or not criteria.get("budget_eur"):
         return
     raise ModelRetry(
@@ -651,7 +753,7 @@ def build_agent() -> Agent[AgentDeps, RecommenderOutput]:
             Tool(research_knowledge, prepare=research_once),
         ],
         retries=3,
-        capabilities=[compact_earlier_messages, Hooks(tool_execute=enforce_budgets)],
+        capabilities=[compact_earlier_messages, Hooks(tool_execute=enforce_budgets), PrepareOutputTools(offer_outputs)],
         defer_model_check=True,
     )
 

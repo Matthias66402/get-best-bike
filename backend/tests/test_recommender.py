@@ -192,8 +192,11 @@ async def test_rejects_ebike_without_motor_data() -> None:
     assert "fehlen Motor und Akku" in retry_prompts(result.all_messages())[0]
 
 
-async def test_rejects_homepage_as_source() -> None:
+async def test_rejects_homepage_as_source(tavily: respx.MockRouter) -> None:
     home = "https://www.cube.eu/"
+    # Die Startseite kommt als Treffer der Suche (Beratung 29: vanrysel.com), nur dann darf sie gelesen werden
+    homepage_hit = {"title": "Cube Bikes", "url": home, "content": "Cube Kathmandu Hybrid Pro 750", "score": 0.5}
+    tavily.routes[0].respond(json={**SEARCH_OK, "results": [*SEARCH_OK["results"], homepage_hit]})
     steps = (SEARCH, ("read_product_page", {"url": home}), RESEARCH, FRAME)
     result = await run(
         *steps,
@@ -470,7 +473,7 @@ async def test_no_frame_size_needed_without_measures() -> None:
 
 async def test_page_from_read_product_page_counts() -> None:
     page = ("read_product_page", {"url": CUBE_URL + "/"})  # abweichende Schreibweise der URL
-    result = await run(page, RESEARCH, FRAME, ("final_recommendation", recommendation()))
+    result = await run(SEARCH, page, RESEARCH, FRAME, ("final_recommendation", recommendation()))
     assert not retry_prompts(result.all_messages())
 
 
@@ -678,3 +681,117 @@ async def test_frame_size_tool_hidden_after_rounds() -> None:
     assert await frame_size_budget(one_round, tool_def) is not None
     two_rounds = SimpleNamespace(messages=[prompt, *round_(1), *round_(2)], deps=deps)
     assert await frame_size_budget(two_rounds, tool_def) is None
+
+
+async def test_invented_url_is_not_fetched_and_does_not_use_budget(
+    monkeypatch: pytest.MonkeyPatch, tavily: respx.MockRouter
+) -> None:
+    """Beratung 29: Selbst gebaute URLs (404) verbrauchten die Seitenabrufe, danach kam keine Rangliste."""
+    monkeypatch.setattr("app.agent.recommender.TOOL_BUDGETS", {"search_bikes": 10, "read_product_page": 1})
+    invented = ("read_product_page", {"url": "https://www.cube.eu/de/bikes/kathmandu-hybrid-pro-750/"})
+    steps = (SEARCH, invented, ("read_product_page", {"url": CUBE_URL}), RESEARCH, FRAME)
+    result = await run(*steps, ("final_recommendation", recommendation()))
+    returns = [
+        part.content
+        for message in result.all_messages()
+        if isinstance(message, ModelRequest)
+        for part in message.parts
+        if isinstance(part, ToolReturnPart) and part.tool_name == "read_product_page"
+    ]
+    assert "stammt nicht aus `search_bikes`" in returns[0]["error"]
+    assert CUBE_URL in returns[0]["error"]  # Vorschlag: Treffer mit denselben Wörtern im Pfad
+    assert returns[1]["url"] == CUBE_URL  # trotz Budget 1: der abgelehnte Aufruf zählt nicht
+    assert tavily.routes[1].call_count == 1
+
+
+async def test_url_from_user_message_may_be_read(tavily: respx.MockRouter) -> None:
+    url = "https://www.example-shop.de/mein-wunschrad"
+    steps = (("read_product_page", {"url": url}), ("answer_user", {"message": "Das Rad passt."}))
+    with recommender_agent.override(model=scripted_model(*steps)):
+        async with httpx.AsyncClient() as http:
+            deps = AgentDeps(settings=get_settings(), http=http, session_factory=SessionLocal, user_name="Ute")
+            async with recommender_agent.run_stream_events(f"Passt {url} zu mir?", deps=deps) as events:
+                [e async for e in events]
+    assert tavily.routes[1].call_count == 1
+
+
+async def test_only_ranking_offered_once_web_budget_is_used(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Beratung 29: Mit leerem Web-Budget fragte das Modell per ask_user/answer_user, ob es weiter suchen darf."""
+    monkeypatch.setattr("app.agent.recommender.TOOL_BUDGETS", {"search_bikes": 1, "read_product_page": 1})
+    outputs: list[set[str]] = []
+    steps = [
+        SEARCH,
+        ("read_product_page", {"url": CUBE_URL}),
+        RESEARCH,
+        FRAME,
+        ("final_recommendation", recommendation()),
+    ]
+
+    def model(messages: list[Any], info: Any) -> ModelResponse:
+        outputs.append({tool.name for tool in info.output_tools})
+        name, args = steps[len(outputs) - 1]
+        return ModelResponse(parts=[ToolCallPart(name, args)])
+
+    with recommender_agent.override(model=FunctionModel(model)):
+        async with httpx.AsyncClient() as http:
+            deps = AgentDeps(
+                settings=get_settings(), http=http, session_factory=SessionLocal, user_name="Ute", ranking_due=True
+            )
+            result = await recommender_agent.run("Trekking-E-Bike bis 3500 €", deps=deps)
+    assert {"ask_user", "answer_user"} <= outputs[0]
+    assert outputs[-1] == {"final_recommendation"}
+    assert isinstance(result.output, BikeRecommendation)
+
+
+def test_category_from_url_path() -> None:
+    """Beratung 30: Rose-Seite ohne „Gravel“ im Text, aber mit dem Reifen „Continental Grand Prix Urban“."""
+    text = (
+        "Rose Bikes\n## Backroad AL GRX 610\n* €2,500.00\nFrame material: aluminium\nTyres: Continental Terra Adventure\n"
+        "## Backroad AL EQ\nTyres: Continental Grand Prix Urban\nDynamo: inclusive"
+    )
+    gravel_url = "https://www.rosebikes.com/bikes/gravel/adventure/backroad-al/models"
+    other_url = "https://www.rosebikes.com/p/backroad-al-models"
+    pages = {normalize_url(gravel_url): text, normalize_url(other_url): text}
+    specs = {
+        "weight_kg": 10.5,
+        "drivetrain": "1x12",
+        "motor": None,
+        "battery_wh": None,
+        "suspension": "starr",
+        "brakes": "Scheibenbremsen",
+    }
+    rose = {"brand": "Rose", "model": "Backroad AL GRX 610", "category": "gravel", "price": 2500, "key_specs": specs}
+    rec = BikeRecommendation.model_validate(recommendation(bike(1, url=gravel_url, **rose), budget=2500))
+    check_sources(rec, pages)  # Kategorie aus dem URL-Pfad
+    rec = BikeRecommendation.model_validate(recommendation(bike(1, url=other_url, **rose), budget=2500))
+    with pytest.raises(ModelRetry, match="nicht als gravel"):
+        check_sources(rec, pages)
+
+
+async def test_question_without_missing_fields_is_rejected_and_only_ranking_remains() -> None:
+    """Beratung 30: „Soll ich jetzt fünf Neuräder recherchieren?“ ohne fehlende Angabe; die zweite Rückfrage galt."""
+    outputs: list[set[str]] = []
+    question = ("ask_user", {"question": "Soll ich jetzt recherchieren?", "missing_fields": []})
+    steps = [
+        SEARCH,
+        RESEARCH,
+        FRAME,
+        question,
+        ("final_recommendation", recommendation(*[bike(i) for i in range(1, 6)])),
+    ]
+
+    def model(messages: list[Any], info: Any) -> ModelResponse:
+        outputs.append({tool.name for tool in info.output_tools})
+        name, args = steps[len(outputs) - 1]
+        return ModelResponse(parts=[ToolCallPart(name, args)])
+
+    with recommender_agent.override(model=FunctionModel(model)):
+        async with httpx.AsyncClient() as http:
+            deps = AgentDeps(
+                settings=get_settings(), http=http, session_factory=SessionLocal, user_name="Ute", ranking_due=True
+            )
+            result = await recommender_agent.run("Trekking-E-Bike bis 3500 €", deps=deps)
+    assert any("missing_fields" in text for text in retry_prompts(result.all_messages(), "ask_user"))
+    assert {"ask_user", "answer_user"} <= outputs[3]
+    assert outputs[4] == {"final_recommendation"}
+    assert isinstance(result.output, BikeRecommendation)
