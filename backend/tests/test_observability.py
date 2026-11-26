@@ -1,7 +1,14 @@
+import json
+from collections.abc import Iterator
+
+import pytest
 from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import StatusCode
 
 from app import observability
-from app.observability import chat_turn, observation_name, observe, tracing_enabled
+from app.observability import add_metadata, chat_turn, mark_warning, observation_name, observe, tracing_enabled
 
 
 def test_model_spans_named_by_agent_not_model() -> None:
@@ -44,4 +51,58 @@ def test_observations_are_noops_without_tracing() -> None:
         root.update(output="…", metadata={"outcome": "recommendation"})
         with observe("retrieve-knowledge", as_type="retriever") as span:
             span.update(output=[])
-    assert not observability._enabled
+    assert observability._backend is None
+
+
+@pytest.fixture
+def langsmith_spans(monkeypatch: pytest.MonkeyPatch) -> Iterator[InMemorySpanExporter]:
+    """LangSmith-Backend mit lokalem Provider: Spans landen im Speicher statt bei LangSmith."""
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(observability, "_backend", "langsmith")
+    monkeypatch.setattr(observability, "_tracer", provider.get_tracer("test"))
+    yield exporter
+
+
+def test_langsmith_chat_turn_is_thread_root(langsmith_spans: InMemorySpanExporter) -> None:
+    with chat_turn(message="Gravelbike bis 2000 €", user_id=1, consultation_id=2) as root:
+        root.update(output="Hier sind fünf Räder", metadata={"outcome": "recommendation", "tool_calls": 3})
+    (span,) = langsmith_spans.get_finished_spans()
+    attributes = dict(span.attributes or {})
+    assert span.name == "chat-turn"
+    assert attributes["langsmith.trace.name"] == "chat-turn"
+    assert attributes["langsmith.span.kind"] == "chain"
+    assert attributes["langsmith.span.tags"] == "chat"
+    assert attributes["langsmith.metadata.thread_id"] == "consultation-2"
+    assert attributes["langsmith.metadata.user_id"] == "1"
+    assert attributes["langsmith.metadata.outcome"] == "recommendation"
+    assert attributes["langsmith.metadata.tool_calls"] == 3
+    assert json.loads(str(attributes["input.value"])) == {"input": "Gravelbike bis 2000 €"}
+    assert json.loads(str(attributes["output.value"])) == {"output": "Hier sind fünf Räder"}
+
+
+def test_langsmith_observation_kinds_and_levels(langsmith_spans: InMemorySpanExporter) -> None:
+    with observe("retrieve-knowledge", as_type="retriever", input="Gravel", metadata={"top_k": 5}) as retrieval:
+        retrieval.update(output=[{"document": "Ratgeber", "score": 0.8}])
+        add_metadata(rate_limit_wait_s=1.5)
+    with observe("search_bikes", as_type="tool", input={"query": "Gravel"}):
+        mark_warning("Tavily hat nicht geantwortet")
+    with observe("retrieve-knowledge", as_type="retriever") as failed:
+        failed.update(level="ERROR", status_message="DB nicht erreichbar")
+    retrieval_span, tool_span, failed_span = langsmith_spans.get_finished_spans()
+
+    retrieval_attributes = dict(retrieval_span.attributes or {})
+    assert retrieval_attributes["langsmith.span.kind"] == "retriever"
+    assert retrieval_attributes["langsmith.metadata.top_k"] == 5
+    assert retrieval_attributes["langsmith.metadata.rate_limit_wait_s"] == 1.5
+    assert json.loads(str(retrieval_attributes["output.value"])) == {"output": [{"document": "Ratgeber", "score": 0.8}]}
+
+    tool_attributes = dict(tool_span.attributes or {})
+    assert tool_attributes["langsmith.span.kind"] == "tool"
+    assert json.loads(str(tool_attributes["input.value"])) == {"query": "Gravel"}
+    assert tool_attributes["langsmith.metadata.level"] == "WARNING"
+    assert tool_span.status.status_code == StatusCode.UNSET  # Warnung, kein Fehler
+
+    assert failed_span.status.status_code == StatusCode.ERROR
+    assert failed_span.status.description == "DB nicht erreichbar"

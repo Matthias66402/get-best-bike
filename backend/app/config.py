@@ -1,6 +1,7 @@
 import os
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -53,10 +54,15 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://localhost:5181"
 
-    # Tracing mit Langfuse (siehe app/observability.py); ohne Keys aus
+    # Tracing (siehe app/observability.py): Backend langfuse, langsmith oder none; ohne Keys aus
+    tracing_backend: Literal["langfuse", "langsmith", "none"] = "langfuse"
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
     langfuse_tracing_enabled: bool = True
+    langsmith_api_key: str = ""
+    langsmith_project: str = "get-best-bike"
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
+    langsmith_tracing: bool = True
 
     @property
     def cors_origin_list(self) -> list[str]:

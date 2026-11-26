@@ -4,8 +4,9 @@ import os
 os.environ["DATABASE_URL"] = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://bike:bike@localhost:5441/bike_test"
 )
-# Keine Traces aus Tests nach Langfuse senden, auch wenn .env Keys enthält
+# Keine Traces aus Tests nach Langfuse oder LangSmith senden, auch wenn .env Keys enthält
 os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
+os.environ["LANGSMITH_TRACING"] = "false"
 # Nie die echte Websuche: Tests, die sie brauchen, setzen einen Test-Key und mocken Tavily mit respx
 os.environ["TAVILY_API_KEY"] = ""
 # Ohne Drosselung: Tests ersetzen die Modelle ohnehin (Drosselung selbst: test_rate_limit)

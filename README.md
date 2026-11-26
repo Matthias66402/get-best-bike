@@ -18,7 +18,7 @@ Eingeloggte Nutzer beschreiben in eigenen Worten, welches Rad sie suchen, etwa �
 | Agent | LangGraph (Ablauf eines Chat-Durchlaufs), PydanticAI (Berater, Intake und Recherche-Agent, anbieter-agnostisch, Modell per `.env`) |
 | RAG | pgvector (HNSW, Kosinus), Embeddings über PydanticAI `Embedder`, Relevanzprüfung der Treffer durch ein kleines LLM |
 | Websuche | [Tavily](https://tavily.com) (`/search` und `/extract`), Antworten 24 h in Postgres zwischengespeichert |
-| Tracing | Langfuse (optional, OpenTelemetry über die PydanticAI-Instrumentierung) |
+| Tracing | Langfuse oder LangSmith (optional, OpenTelemetry über die PydanticAI-Instrumentierung) |
 
 ## Schnellstart
 
@@ -152,11 +152,17 @@ docker compose exec backend python -m app.evaluation.recommender --case gravel-o
 
 Ein Durchlauf kostet echte Modell- und Tavily-Aufrufe und belegt dasselbe Ratenlimit wie die App.
 
-## Tracing mit Langfuse
+## Tracing mit Langfuse oder LangSmith
 
-`backend/app/observability.py`, optional. Mit `LANGFUSE_PUBLIC_KEY` und `LANGFUSE_SECRET_KEY` in der `.env` landet jede Chat-Nachricht als Trace `chat-turn` in Langfuse:
+`backend/app/observability.py`, optional. `TRACING_BACKEND` wählt das Ziel (`langfuse`, `langsmith` oder `none`, Standard `langfuse`). Jede Chat-Nachricht landet als Trace `chat-turn`:
 - darunter `intake`, der Recherche-Agent `knowledge-researcher` mit `retrieve-knowledge` und `relevance-grader` sowie der Agent `bike-recommender` mit allen Modell- und Tool-Aufrufen
-- Session `consultation-<id>`; als Nutzer wird die numerische ID übertragen, nicht die E-Mail
+- je Beratung eine Session (Langfuse) bzw. ein Thread (LangSmith) `consultation-<id>`; als Nutzer wird die numerische ID übertragen, nicht die E-Mail
+- gescheiterte Tool-Aufrufe sind Warnungen: in Langfuse Level `WARNING`, in LangSmith Metadatum `level=WARNING`
+
+| Backend | Aktiv mit | Export |
+|---|---|---|
+| `langfuse` | `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | Langfuse-SDK |
+| `langsmith` | `LANGSMITH_API_KEY`; Projekt `LANGSMITH_PROJECT`, Region `LANGSMITH_ENDPOINT` (EU: `https://eu.api.smith.langchain.com`) | OTLP an `<LANGSMITH_ENDPOINT>/otel/v1/traces` |
 
 Tests senden nie Traces.
 
@@ -177,7 +183,8 @@ Vorlage ist `.env.example`. Sie muss jede Einstellung aus `backend/app/config.py
 | `WEB_SEARCH_MAX_RESULTS` | Treffer je Suche (Standard 5, höchstens 10) |
 | `WEB_CACHE_HOURS` | Dauer des Zwischenspeichers für Suchergebnisse und Seiten (Standard 24) |
 | `HTTP_TIMEOUT_SECONDS` | Zeitlimit für externe Dienste |
-| `LANGFUSE_*` | Optional: Tracing (siehe oben) |
+| `TRACING_BACKEND` | `langfuse`, `langsmith` oder `none` (siehe Tracing) |
+| `LANGFUSE_*` / `LANGSMITH_*` | Optional: Zugangsdaten des Tracing-Backends (siehe oben) |
 
 ## Projektstruktur
 
