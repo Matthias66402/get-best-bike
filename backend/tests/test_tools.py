@@ -133,6 +133,10 @@ async def test_shop_search_limits_domains_and_has_own_cache_entry(tavily_key: No
     shop = json.loads(route.calls.last.request.content)
     assert "rosebikes.de" in shop["include_domains"] and "idealo.de" in shop["include_domains"]
     assert "country" not in shop  # mit country liefert Tavily bei include_domains nichts
+    # Beratung 10: Das Modell schrieb den Parameter zusätzlich in den Suchtext
+    result = await search_bikes(ctx, "Canyon Grizl CF 6 Preis shops=true", shops=True)
+    assert json.loads(route.calls.last.request.content)["query"] == "Canyon Grizl CF 6 Preis"
+    assert result["query"] == "Canyon Grizl CF 6 Preis"
 
 
 @respx.mock

@@ -37,10 +37,12 @@ from app.agent.recommender import (
     FREE_REPEATED_READS,
     FREE_UNKNOWN_URLS,
     INSTRUCTIONS,
+    NO_RANKING_MESSAGE,
     PRICED_RANKS,
     TOOL_BUDGETS,
     calls_in_run,
     category_conflict,
+    check_distinct_models,
     check_placeholders,
     check_ranking_size,
     check_sources,
@@ -431,6 +433,41 @@ def test_concrete_models_pass_collective_check() -> None:
     check_specific_models(rec)
 
 
+KANZO_PAGE = (
+    "Ridley Kanzo Adventure Alu - Shimano GRX600 grün 2026, Gravelbike. Preisvergleich: ab 1.399,99 € bei 6 Shops."
+)
+KANZO_URL = "https://www.idealo.de/preisvergleich/OffersOfProduct/209459239_-kanzo-adventure-alu-grx600.html"
+
+
+def kanzo(rank: int, model: str, price: float | None = 1399.99) -> dict[str, Any]:
+    specs = bike(1)["key_specs"] | {"motor": None, "battery_wh": None}
+    return bike(rank, url=KANZO_URL, price=price, brand="Ridley", model=model, category="gravel", key_specs=specs)
+
+
+def test_equipment_code_must_be_on_source_page() -> None:
+    """Beratung 10: „Kanzo Adventure Alu – Shimano GRX400 2x10“, belegt mit der Seite der GRX600-Version."""
+    pages = {normalize_url(KANZO_URL): KANZO_PAGE}
+    wrong = recommendation(kanzo(1, "Kanzo Adventure Alu - Shimano GRX400 2x10"), budget=2500, electric=None)
+    with pytest.raises(ModelRetry, match="„grx400 2x10“ aus dem Modellnamen steht nicht"):
+        check_sources(BikeRecommendation.model_validate(wrong), pages)
+    right = recommendation(kanzo(1, "Kanzo Adventure Alu - Shimano GRX600"), budget=2500, electric=None)
+    check_sources(BikeRecommendation.model_validate(right), pages)
+
+
+def test_same_model_in_other_equipment_is_rejected() -> None:
+    """Beratung 10: Kanzo Adventure Alu mit GRX400 auf Platz 1 und mit GRX600 auf Platz 4."""
+    rec = BikeRecommendation.model_validate(
+        recommendation(
+            kanzo(1, "Kanzo Adventure Alu - Shimano GRX400 2x10"), bike(2), kanzo(3, "Kanzo Adventure Alu GRX600")
+        )
+    )
+    with pytest.raises(ModelRetry, match="Platz 3 ist dasselbe Modell wie Platz 1"):
+        check_distinct_models(rec)
+    # Unterschiedliche Modelle derselben Familie bleiben erlaubt, z. B. Grizl 7 (Alu) und Grizl CF 6 (Carbon)
+    grizl = [bike(i, brand="Canyon", model=m) for i, m in ((1, "Grizl 7"), (2, "Grizl CF 6"))]
+    check_distinct_models(BikeRecommendation.model_validate(recommendation(*grizl)))
+
+
 def outputs_ctx(messages: list[Any], **criteria: Any) -> Any:
     settings = SimpleNamespace(tavily_api_key="tvly-test")
     deps = SimpleNamespace(ranking_due=True, settings=settings, criteria=criteria)
@@ -700,6 +737,30 @@ async def test_shrunk_ranking_must_keep_sound_bikes(monkeypatch: pytest.MonkeyPa
     assert isinstance(result.output, BikeRecommendation) and len(result.output.ranking) == 4
 
 
+INVENTED = "https://example.com"
+PLACEHOLDER_RANKING = (
+    "final_recommendation",
+    recommendation(bike(1, url=INVENTED, brand="Placeholder", model="Placeholder")) | {"summary": "Platzhalter"},
+)
+
+
+async def test_last_attempt_salvages_earlier_ranking_despite_placeholder() -> None:
+    """Beratung 11: Versuch 1 hatte ein belegtes Rad, Versuch 2 und 4 waren Platzhalter-Ranglisten mit example.com,
+    Versuch 3 nur eine erfundene URL; der Lauf brach mit „Exceeded maximum output retries“ ab."""
+    first = ("final_recommendation", recommendation(bike(1), bike(2, url=INVENTED)))
+    invented = ("final_recommendation", recommendation(bike(1, url=INVENTED)))
+    result = await run(SEARCH, RESEARCH, FRAME, first, PLACEHOLDER_RANKING, invented, PLACEHOLDER_RANKING)
+    output = result.output
+    assert isinstance(output, BikeRecommendation)
+    assert [(b.rank, b.price_source_url) for b in output.ranking] == [(1, CUBE_URL)]
+
+
+async def test_last_attempt_without_any_sound_bike_answers_in_text() -> None:
+    """Lässt sich in keinem Versuch ein Rad belegen, endet die Antwort mit einer Erklärung statt einem Abbruch."""
+    result = await run(SEARCH, RESEARCH, FRAME, *[PLACEHOLDER_RANKING] * 4)
+    assert isinstance(result.output, TextAnswer) and result.output.message == NO_RANKING_MESSAGE
+
+
 async def test_last_attempt_prefers_longer_previous_ranking() -> None:
     """Beratung 2: Im letzten Versuch kam ein einziges Rad; die vorige Rangliste hätte gerettet vier ergeben."""
     result = await run(
@@ -762,6 +823,10 @@ def test_placeholder_texts_are_rejected() -> None:
     with pytest.raises(ModelRetry, match="Platzhalter"):
         check_placeholders(dummy)
     check_placeholders(BikeRecommendation.model_validate(recommendation()))
+    # Länger als 10 Zeichen: Erkannt nur über das Muster (es enthielt seit Beratung 26 Backspaces statt \b)
+    long_dummy = BikeRecommendation.model_validate(recommendation() | {"summary": "Platzhalter"})
+    with pytest.raises(ModelRetry, match="Platzhalter"):
+        check_placeholders(long_dummy)
 
 
 async def test_parallel_calls_cannot_exceed_budget(monkeypatch: pytest.MonkeyPatch, tavily: respx.MockRouter) -> None:

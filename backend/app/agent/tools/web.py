@@ -127,6 +127,8 @@ async def search_bikes(
     deps = ctx.deps
     if not deps.settings.tavily_api_key:
         return tool_error("Websuche ist nicht eingerichtet (TAVILY_API_KEY fehlt). Ohne aktuelle Modelle beraten.")
+    # Beratung 10: „Canyon Grizl CF 6 Preis 2026 shops=true“, der Parameter zusätzlich im Suchtext
+    query = re.sub(r"\s*\bshops\s*[=:]\s*(true|false)\b", "", query, flags=re.IGNORECASE).strip()
     # Mehr als konfiguriert nicht, auch wenn das Modell es verlangt (es setzte gern 6)
     default = deps.settings.web_search_max_results
     limit = max(1, min(max_results or default, default, MAX_RESULTS_LIMIT))

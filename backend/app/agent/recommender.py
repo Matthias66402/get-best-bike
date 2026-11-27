@@ -604,6 +604,14 @@ def check_sources(
             continue
         # Kategorie und Preis im Umfeld des Modells: Testartikel nennen mehrere Räder mit eigener Kategorie und Preis
         context = model_context(bike.model, text)
+        if missing := [code for code in equipment_codes(bike.model) if code not in words(context)]:
+            # Beratung 10: „Kanzo Adventure Alu – Shimano GRX400 2x10“, belegt mit der Seite der GRX600-Version
+            problems.append(
+                f"{name}: „{' '.join(missing)}“ aus dem Modellnamen steht nicht auf {bike.price_source_url}; die "
+                "Seite zeigt wohl eine andere Ausstattung. Nimm den Modellnamen und den Preis genau dieser Seite "
+                "oder belege die Ausstattung mit ihrer eigenen Seite."
+            )
+            continue
         # Der URL-Pfad ordnet das Rad oft ein, ohne dass der Seitentext die Kategorie nennt. Beratung 30: Die
         # Rose-Seite /bikes/gravel/.../backroad-al nannte „Gravel“ nicht, wohl aber den Reifen „Continental Grand Prix
         # Urban“; das Backroad galt deshalb als City-Rad
@@ -660,6 +668,39 @@ def check_budget(output: BikeRecommendation) -> None:
         raise ModelRetry(
             f"Budget {budget:g} €: {names} liegt mehr als {BUDGET_TOLERANCE:.0%} darüber. Ersetze diese Räder durch "
             "günstigere Kandidaten aus der Websuche oder lass sie weg."
+        )
+
+
+# Hersteller von Schaltgruppen: kein Teil des Radnamens, sondern der Ausstattung
+COMPONENT_BRANDS = {"shimano", "sram", "campagnolo", "microshift"}
+
+
+def equipment_codes(model: str) -> list[str]:
+    """Wörter aus Buchstaben und Ziffern, die eine Ausstattung bezeichnen, z. B. „grx400“, „2x10“, „105di2“."""
+    return [w for w in words(model) if re.search(r"[a-zäöüß]", w) and re.search(r"\d", w)]
+
+
+def base_model(model: str) -> tuple[str, ...]:
+    """Modellname ohne Ausstattung: ohne Ausstattungscodes und Schaltgruppen-Hersteller."""
+    codes = set(equipment_codes(model))
+    return tuple(w for w in words(model) if w not in codes and w not in COMPONENT_BRANDS)
+
+
+def check_distinct_models(output: BikeRecommendation) -> None:
+    """Jedes Modell nur einmal. Beratung 10: Ridley Kanzo Adventure Alu mit GRX400 auf Platz 1 und mit GRX600 auf
+    Platz 4; die Liste hatte damit nur vier verschiedene Räder."""
+    seen: dict[tuple[str, tuple[str, ...]], int] = {}
+    doubles = []
+    for bike in output.ranking:
+        key = (bike.brand.casefold(), base_model(bike.model))
+        if key in seen:
+            doubles.append(f"Platz {bike.rank} ist dasselbe Modell wie Platz {seen[key]} ({bike.brand} {bike.model})")
+        else:
+            seen[key] = bike.rank
+    if doubles:
+        raise ModelRetry(
+            f"{'; '.join(doubles)}, nur in anderer Ausstattung. Nimm die passendere Ausstattung und ersetze den "
+            "anderen Platz durch ein anderes Modell; die zweite Ausstattung kannst Du in `cons` erwähnen."
         )
 
 
@@ -754,7 +795,7 @@ def check_ranking_size(output: BikeRecommendation, ctx: RunContext[AgentDeps]) -
     )
 
 
-PLACEHOLDER = re.compile(r"(dummy|placeholder|platzhalter|lorem|ipsum|todo|tbd|test|xxx)", re.IGNORECASE)
+PLACEHOLDER = re.compile(r"\b(dummy|placeholder|platzhalter|lorem|ipsum|todo|tbd|test|xxx)\b", re.IGNORECASE)
 
 
 def check_placeholders(output: BikeRecommendation) -> None:
@@ -863,6 +904,7 @@ def bike_problems(output: BikeRecommendation, ctx: RunContext[AgentDeps], *, sal
         lambda: check_budget(output),
         lambda: check_spec_notes(output),
         lambda: check_specific_models(output, web_budget=web_budget_left(ctx.messages)),
+        lambda: check_distinct_models(output),
         lambda: check_electric(output, require_specs=not salvaging),
         lambda: check_frame_sizes(output, ctx.deps, ctx.messages),
     )
@@ -893,8 +935,8 @@ def salvage_ranking(output: BikeRecommendation, ctx: RunContext[AgentDeps]) -> B
     return salvaged.model_copy(update={"buying_tips": tips})
 
 
-def previous_ranking(messages: list[ModelMessage]) -> BikeRecommendation | None:
-    """Die zuletzt zurückgewiesene Rangliste dieser Antwort; None, wenn es keine gibt oder sie das Schema verletzte."""
+def rejected_rankings(messages: list[ModelMessage]) -> list[BikeRecommendation]:
+    """Alle zurückgewiesenen Ranglisten dieser Antwort, älteste zuerst; ohne solche, die das Schema verletzten."""
     run = current_run(messages)
     rejected = {
         part.tool_call_id
@@ -911,12 +953,19 @@ def previous_ranking(messages: list[ModelMessage]) -> BikeRecommendation | None:
         for part in message.parts
         if isinstance(part, ToolCallPart) and part.tool_call_id in rejected
     ]
-    if not calls:
-        return None
-    try:
-        return BikeRecommendation.model_validate(calls[-1].args_as_dict())
-    except ValueError:
-        return None
+    rankings = []
+    for call in calls:
+        try:
+            rankings.append(BikeRecommendation.model_validate(call.args_as_dict()))
+        except ValueError:
+            continue
+    return rankings
+
+
+def previous_ranking(messages: list[ModelMessage]) -> BikeRecommendation | None:
+    """Die zuletzt zurückgewiesene Rangliste dieser Antwort."""
+    rankings = rejected_rankings(messages)
+    return rankings[-1] if rankings else None
 
 
 def bike_key(bike: RankedBike) -> tuple[str, str]:
@@ -946,16 +995,25 @@ def check_kept_bikes(output: BikeRecommendation, ctx: RunContext[AgentDeps]) -> 
 
 
 def best_last_attempt(
-    output: BikeRecommendation, ctx: RunContext[AgentDeps], problems: list[str]
+    output: BikeRecommendation, ctx: RunContext[AgentDeps], problems: list[str], global_problems: list[str]
 ) -> BikeRecommendation | None:
-    """Letzter Versuch: die längere aus der (geretteten) aktuellen und der geretteten vorigen Rangliste. Bei
-    Gleichstand gewinnt die aktuelle."""
-    current = salvage_ranking(output, ctx) if problems else output
-    previous = previous_ranking(ctx.messages)
-    earlier = salvage_ranking(previous, ctx) if previous else None
-    if earlier and (current is None or len(earlier.ranking) > len(current.ranking)):
-        return earlier
-    return current
+    """Letzter Versuch: die längste aus der (geretteten) aktuellen und allen geretteten früheren Ranglisten dieser
+    Antwort. Die aktuelle zählt nur ohne globale Probleme (z. B. Platzhalter); bei Gleichstand gewinnt die neueste.
+
+    Beratung 11: Versuch 1 hatte ein belegtes Rad, Versuch 2 und 4 waren Platzhalter-Ranglisten („Placeholder“,
+    example.com), Versuch 3 nur eine erfundene URL. Gerettet wurde nur bei globalen Problemen nichts und auch nur
+    die unmittelbar vorige Rangliste; der Lauf endete mit „Exceeded maximum output retries“."""
+    candidates = [] if global_problems else [salvage_ranking(output, ctx) if problems else output]
+    candidates += [salvage_ranking(ranking, ctx) for ranking in reversed(rejected_rankings(ctx.messages))]
+    found = [candidate for candidate in candidates if candidate is not None]
+    return max(found, key=lambda candidate: len(candidate.ranking)) if found else None
+
+
+NO_RANKING_MESSAGE = (
+    "Ich konnte diesmal keine Rangliste mit belegten Rädern erstellen: Für die gefundenen Modelle ließen sich Preis "
+    "und Ausstattung auf keiner Händler- oder Herstellerseite nachweisen. Schick mir die Anfrage gern noch einmal, "
+    "etwas allgemeiner oder mit einem Modell, das Dich interessiert, dann suche ich neu."
+)
 
 
 def build_agent() -> Agent[AgentDeps, RecommenderOutput]:
@@ -1038,11 +1096,15 @@ def build_agent() -> Agent[AgentDeps, RecommenderOutput]:
             *([] if final_try else [lambda: check_kept_bikes(output, ctx)]),
         )
         problems = global_problems + bike_problems(output, ctx)
-        # Letzter Versuch: lieber eine kürzere, belegte Rangliste als „Exceeded maximum output retries“
-        if final_try and not global_problems and (best := best_last_attempt(output, ctx, problems)) is not None:
-            if best is not output:
-                logger.warning("Letzter Versuch: %d Räder statt %d", len(best.ranking), len(output.ranking))
-            return best
+        # Letzter Versuch: lieber eine kürzere, belegte Rangliste oder eine ehrliche Textantwort als „Exceeded
+        # maximum output retries“
+        if final_try:
+            if (best := best_last_attempt(output, ctx, problems, global_problems)) is not None:
+                if best is not output:
+                    logger.warning("Letzter Versuch: %d Räder statt %d", len(best.ranking), len(output.ranking))
+                return best
+            logger.warning("Letzter Versuch: keine Rangliste zu retten, Textantwort statt Abbruch")
+            return TextAnswer(message=NO_RANKING_MESSAGE)
         if not problems:
             return output
         raise ModelRetry("\n\n".join([*problems, KEEP_RESULTS_NOTE]))
