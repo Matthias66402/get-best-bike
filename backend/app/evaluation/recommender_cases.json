@@ -20,6 +20,15 @@
       "frame_size": true
     },
     {
+      "id": "trekking-gepaeck",
+      "message": "Ich möchte ein Treckingrad mit vielen Gängen kaufen, so dass ich es gut im Flachland als auch in den Bergen verwenden kann. Es sollte 28Zoll Räder haben und einen tragfähigen Gepäckträger haben. Außerdem ist meine Preisgrenze bei 1500 Euro.",
+      "expected_output": "final_recommendation",
+      "category": ["trekking"],
+      "electric": false,
+      "budget_eur": 1500,
+      "frame_size": false
+    },
+    {
       "id": "kinderrad",
       "message": "Ein leichtes Kinderrad für meine Tochter, sie ist 118 cm groß. Maximal 500 €.",
       "expected_output": "final_recommendation",

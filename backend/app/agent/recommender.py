@@ -48,7 +48,7 @@ from app.agent.tools.common import model_family, tool_error, words
 from app.agent.tools.frame_size import NO_MEASUREMENTS, recommend_frame_size
 from app.agent.tools.prices import price_in_text, prices_in_text
 from app.agent.tools.research import research_knowledge
-from app.agent.tools.web import normalize_url, read_product_page, search_bikes
+from app.agent.tools.web import is_listing, normalize_url, read_product_page, search_bikes
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -147,11 +147,14 @@ Vorgehen:
    und die Hinweise bei der Auswahl berücksichtigen.
 3. Kandidaten finden mit `search_bikes`: 2-3 Suchen in derselben Runde, z. B. nach Tests bzw. Bestenlisten der
    Kategorie im Budget und mit `shops=true` nach Angeboten im Budget (z. B. "Gravelbike Carbon 2x bis 2500 Euro").
-   Nur Modelle aus den Ergebnissen, nichts aus dem Gedächtnis.
+   Nur Modelle aus den Ergebnissen, nichts aus dem Gedächtnis. Tests und Übersichtsseiten (`listing: true`, z. B.
+   Kategorien von Shops oder Preisvergleichen) liefern Kandidaten, aber keine Belege: Wiederhole keine allgemeine
+   Suche mit leicht anderem Text, sondern suche die gefundenen Modelle einzeln mit `shops=true`, z. B.
+   "Cube Kathmandu Pro" (mehrere solcher Suchen in derselben Runde).
 4. Belegen mit `read_product_page` für die aussichtsreichsten Kandidaten (alle in derselben Runde): Preis,
-   Ausstattung, Gewicht und, falls vorhanden, die Größentabelle. Nur URLs aus den Suchergebnissen; selbst
-   zusammengesetzte URLs lehnt das Tool ab. Fehlt eine Produktseite oder ein Euro-Preis, suche das Modell mit
-   `search_bikes` und `shops=true`.
+   Ausstattung, Gewicht und, falls vorhanden, die Größentabelle, möglichst von der Produktseite des Modells. Nur
+   URLs aus den Suchergebnissen; selbst zusammengesetzte URLs lehnt das Tool ab. Fehlt eine Produktseite oder ein
+   Euro-Preis, suche das Modell mit `search_bikes` und `shops=true`.
 5. Rahmengröße mit `recommend_frame_size` je Rad (mit Größentabelle der Produktseite, falls vorhanden), alle in
    derselben Runde, sobald Körpermaße bekannt sind (Nachricht oder Profil). `frame_size` muss zum Rad passen:
    Wünscht der Nutzer ausdrücklich eine Größe (z. B. 24 Zoll) und nennt das Tool sie als `alternative`, trage sie
@@ -159,7 +162,7 @@ Vorgehen:
    Hinweis auf die errechnete Größe gehört in `cons`, nicht als widersprüchliche Größe in `frame_size`.
 6. Ausgeben mit `final_recommendation`, beste Wahl auf Platz 1, mit 5 Rädern.
    Plätze 1 bis {PRICED_RANKS} brauchen einen Preis von einer Angebots- oder Produktseite; Testartikel allein
-   reichen dafür oft nicht. `model` genau so, wie es auf der Quellseite steht.
+   reichen dafür oft nicht, Übersichtsseiten nie. `model` genau so, wie es auf der Quellseite steht.
 
 Regeln für die Rangliste:
 - `price_source_url` ist eine URL aus `search_bikes` oder `read_product_page`, auf der das Modell vorkommt.
@@ -450,7 +453,35 @@ async def enforce_budgets(
                 f"Budget von {limit} Aufrufen für `{call.tool_name}` in dieser Antwort ist aufgebraucht; nutze die "
                 "bisherigen Ergebnisse."
             )
-    return await handler(args)
+    result = await handler(args)
+    if call.tool_name == "search_bikes" and repeats_earlier_search(result, ctx.messages):
+        # Beratung 14: sieben fast gleiche Händlersuchen („… 'Shimano Deore' '1500 Euro' '2026'“) mit denselben
+        # Übersichtsseiten verbrauchten das Suchbudget; nach einzelnen Modellen wurde nie gesucht
+        result = result | {"note": REPEATED_SEARCH_NOTE}
+    return result
+
+
+REPEATED_HITS_SHARE = 0.8
+REPEATED_SEARCH_NOTE = (
+    "Fast alle Treffer kennst Du schon aus früheren Suchen dieser Antwort; weitere Umformulierungen bringen nichts "
+    'Neues. Suche jetzt die gefundenen Modelle einzeln mit `shops=true` (z. B. "Cube Kathmandu Pro"), um ihre '
+    "Produktseiten zu finden."
+)
+
+
+def repeats_earlier_search(result: Any, messages: list[ModelMessage]) -> bool:
+    """Liefert eine Suche zu mindestens REPEATED_HITS_SHARE Treffer, die frühere Suchen dieser Antwort schon hatten?"""
+    hits = [hit["url"] for hit in result.get("results", []) if hit.get("url")] if isinstance(result, dict) else []
+    if len(hits) < 2:
+        return False
+    seen = {
+        url_key(hit["url"])
+        for content in tool_returns(current_run(messages), "search_bikes")
+        if isinstance(content, dict)
+        for hit in content.get("results", [])
+        if isinstance(hit, dict) and hit.get("url")
+    }
+    return sum(url_key(url) in seen for url in hits) >= REPEATED_HITS_SHARE * len(hits)
 
 
 def determined_sizes(messages: list[ModelMessage]) -> list[str]:
@@ -559,13 +590,19 @@ def fix_source_urls(output: BikeRecommendation, pages: dict[str, str]) -> None:
 
 
 def check_sources(
-    output: BikeRecommendation, pages: dict[str, str], web_budget: bool = True, *, salvaging: bool = False
+    output: BikeRecommendation,
+    pages: dict[str, str],
+    web_budget: bool = True,
+    *,
+    salvaging: bool = False,
+    final_try: bool = False,
 ) -> None:
     """`web_budget=False`, wenn Websuchen und Seitenabrufe dieser Antwort aufgebraucht sind: Dann ließe sich nichts
     mehr nachsuchen. Fehlende Preise gelten, außer die Belegseite nennt beim Modell einen Euro-Preis, und für
     unbelegte Räder heißt die Rückmeldung „streichen“ statt „suchen“ (Beratung 22: Das Modell wollte das Radon per
     Suche ersetzen, fand kein Such-Tool mehr und lief in eine Schleife). Beim Retten (`salvaging`) bleibt ein
-    fehlender Preis eine Lücke in den Daten und kein Grund zum Streichen."""
+    fehlender Preis eine Lücke in den Daten und kein Grund zum Streichen. Übersichtsseiten belegen Platz 1 bis
+    PRICED_RANKS nur noch im letzten Versuch (`final_try`) oder ohne Web-Budget: lieber so belegt als gar nicht."""
     if not pages:
         raise ModelRetry(
             "Die Rangliste braucht Belege aus der Websuche. Suche mit `search_bikes` nach passenden Modellen; "
@@ -610,6 +647,15 @@ def check_sources(
                 f"{name}: „{' '.join(missing)}“ aus dem Modellnamen steht nicht auf {bike.price_source_url}; die "
                 "Seite zeigt wohl eine andere Ausstattung. Nimm den Modellnamen und den Preis genau dieser Seite "
                 "oder belege die Ausstattung mit ihrer eigenen Seite."
+            )
+            continue
+        if bike.rank <= PRICED_RANKS and web_budget and not final_try and is_listing(known, text):
+            # Beratung 14: alle fünf Trekkingräder nur mit einer fahrrad-xxl-Kategorieseite belegt, ohne Ausstattung
+            problems.append(
+                f"{name}: {bike.price_source_url} ist eine Übersichtsseite mit vielen Rädern, keine Produktseite; "
+                f"Ausstattung und Angebot sind dort nicht belegt. Suche das Modell einzeln mit "
+                f'`search_bikes("{bike.brand} {bike.model}", shops=true)` und belege es mit seiner Produktseite '
+                f"(`read_product_page`); findest Du keine, setze es hinter Platz {PRICED_RANKS} oder ersetze es."
             )
             continue
         # Der URL-Pfad ordnet das Rad oft ein, ohne dass der Seitentext die Kategorie nennt. Beratung 30: Die
@@ -899,7 +945,11 @@ def bike_problems(output: BikeRecommendation, ctx: RunContext[AgentDeps], *, sal
     (`salvaging`) zählen fehlende Motor-/Akkuangaben nicht: Sie sind eine Lücke in den Daten, kein falsches Rad."""
     return collect_problems(
         lambda: check_sources(
-            output, known_pages(ctx.messages), web_budget=web_budget_left(ctx.messages), salvaging=salvaging
+            output,
+            known_pages(ctx.messages),
+            web_budget=web_budget_left(ctx.messages),
+            salvaging=salvaging,
+            final_try=ctx.retry >= ctx.max_retries,
         ),
         lambda: check_budget(output),
         lambda: check_spec_notes(output),

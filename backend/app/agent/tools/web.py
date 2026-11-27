@@ -37,6 +37,20 @@ TRUNCATED_NOTE = (
     "zu diesem Modell (ohne Kosten, Cache)."
 )
 MAX_RESULTS_LIMIT = 10
+# Übersichtsseiten (Kategorie, Filter, Preisvergleich): nennen viele Räder mit Namen und Preis, aber keine
+# Ausstattung. Beratung 14: Alle fünf Räder waren nur mit fahrrad-xxl.de/.../radgroesse.28-zoll belegt, ohne jede
+# Angabe zu Schaltung, Bremsen oder Gepäckträger
+LISTING_URL = re.compile(
+    r"/radgroesse\.|/marke\.|/productcategory/|[?&](pto|pfrom|price_(from|to)|range_value\w*|sort|order|filter\w*)=",
+    re.IGNORECASE,
+)
+LISTING_TEXT = re.compile(r"sortieren nach|\bfiltern\b|filter zurücksetzen", re.IGNORECASE)
+LISTING_PRICES = 6
+LISTING_NOTE = (
+    "Übersichtsseite mit vielen Rädern: Sie belegt weder Preis noch Ausstattung für Platz 1 bis 3. Nimm von hier "
+    'die Modellnamen und suche jedes einzeln mit `search_bikes` und `shops=true` (z. B. "Cube Kathmandu Pro"), um '
+    "seine Produktseite zu finden."
+)
 # Shops und Ratgeberseiten liefern verwertbare Preise und Daten; Videos und soziale Netze selten
 # tavily.com: Firmenprofile statt Fahrräder (Beratung 9: 7 von 25 Treffern)
 EXCLUDE_DOMAINS = [
@@ -55,6 +69,14 @@ def normalize_url(url: str) -> str:
     """Für den Abgleich: ohne Fragment und abschließenden Schrägstrich, Schema und Host klein geschrieben."""
     parts = urlsplit(url.strip())
     return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path.rstrip("/"), parts.query, ""))
+
+
+def is_listing(url: str, text: str = "") -> bool:
+    """Übersichts- statt Produktseite: an der URL (Kategorie-, Filter-, Preisvergleichspfade) oder am Text
+    (Sortier-/Filterleiste und mindestens LISTING_PRICES verschiedene Preise)."""
+    if LISTING_URL.search(url):
+        return True
+    return bool(LISTING_TEXT.search(text)) and len(set(prices_in_text(text))) >= LISTING_PRICES
 
 
 def clean_page_text(raw: str) -> str:
@@ -151,7 +173,8 @@ async def search_bikes(
         url, text = hit.get("url"), (hit.get("content") or "")[:SNIPPET_CHARS]
         if not url:
             continue
-        results.append({"title": hit.get("title"), "url": url, "snippet": text, "prices_eur": prices_in_text(text)})
+        result = {"title": hit.get("title"), "url": url, "snippet": text, "prices_eur": prices_in_text(text)}
+        results.append(result | {"listing": True} if is_listing(url) else result)
     if not results:
         return tool_error(f"Keine Treffer für „{query}“. Anders formulieren, z. B. allgemeiner oder ohne Modellnamen.")
     return {"query": query, "results": results}
@@ -204,12 +227,16 @@ async def read_product_page(ctx: RunContext[AgentDeps], url: str, model: str | N
         failed = (payload.get("failed_results") or [{}])[0].get("error", "kein Inhalt")
         return tool_error(f"Seite nicht lesbar ({failed}). Einen anderen Treffer derselben Suche nehmen.")
     raw = clean_page_text(pages[0]["raw_content"])
+    listing = {"listing": True, "note": LISTING_NOTE} if is_listing(url, raw) else {}
     if model and len(raw) > PAGE_CHARS:
         if (focused := focus_text(raw, model)) is None:
             return tool_error(
                 f"„{model}“ kommt auf der Seite {url} nicht vor. Belege das Modell mit einem anderen Treffer."
             )
-        return {"url": url, "model": model, "text": focused, "prices_eur": prices_in_text(focused), "truncated": True}
+        result = {"url": url, "model": model, "text": focused, "prices_eur": prices_in_text(focused)}
+        return result | {"truncated": True} | listing
     text = raw[:PAGE_CHARS]
     result = {"url": url, "text": text, "prices_eur": prices_in_text(text), "truncated": len(raw) > PAGE_CHARS}
+    if listing:
+        return result | listing  # Die Modellnamen reichen; tiefer lesen lohnt auf einer Übersicht nicht
     return result | {"note": TRUNCATED_NOTE} if result["truncated"] else result

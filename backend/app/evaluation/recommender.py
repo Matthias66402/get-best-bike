@@ -3,7 +3,7 @@
 Jede Anfrage aus recommender_cases.json läuft wie im Chat durch den LangGraph-Graphen (Intake, Vorab-Phase, Berater).
 Gemessen werden Laufzeit, Tool-Aufrufe (davon Tavily), Modellaufrufe, Tokens, Kosten des Beraters und
 Wiederholungen durch die Selbstprüfung; geprüft werden Ausgabetyp, Länge der Rangliste, belegte Quell-URLs,
-Budget, Kategorie, Motor und Rahmengröße.
+Produktseiten statt Übersichtsseiten für die vorderen Plätze, Budget, Kategorie, Motor und Rahmengröße.
 
 Aufruf: python -m app.evaluation.recommender [--case ID] [--repeat N] [--output bericht.json]
 Kostet echte Modell- und Tavily-Aufrufe und belegt dasselbe Ratenlimit wie die App.
@@ -25,8 +25,9 @@ from pydantic_ai import ModelMessagesTypeAdapter, ModelRequest, ModelResponse, T
 
 from app.agent.deps import AgentDeps
 from app.agent.recommendation_schema import BikeRecommendation, ClarificationQuestion
-from app.agent.recommender import BUDGET_TOLERANCE, known_pages, match_url
+from app.agent.recommender import BUDGET_TOLERANCE, PRICED_RANKS, known_pages, match_url
 from app.agent.runner import RunOutcome, run_recommender
+from app.agent.tools.web import is_listing
 from app.config import get_settings
 from app.db import SessionLocal, engine
 
@@ -69,6 +70,12 @@ def check_output(case: dict[str, Any], outcome: RunOutcome, messages: list[Any])
         "Rangliste": True,
         "1-5 Räder": 1 <= len(rec.ranking) <= 5,
         "Quellen belegt": all(match_url(b.price_source_url, pages) for b in rec.ranking),
+        # Beratung 14: Platz 1 bis 3 nur mit einer Kategorieseite belegt, ohne jede Ausstattung
+        "Produktseiten": not any(
+            is_listing(b.price_source_url, pages.get(match_url(b.price_source_url, pages) or "", ""))
+            for b in rec.ranking
+            if b.rank <= PRICED_RANKS
+        ),
         "Kategorie": all(b.category.value in case.get("category", [b.category.value]) for b in rec.ranking),
     }
     if budget := case.get("budget_eur"):

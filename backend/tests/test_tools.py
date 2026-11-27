@@ -9,7 +9,7 @@ from app.agent.deps import AgentDeps
 from app.agent.recommendation_schema import BikeCategory
 from app.agent.tools.frame_size import NO_CHILD_HEIGHT, SizeChartRow, recommend_frame_size
 from app.agent.tools.prices import price_in_text, prices_in_text
-from app.agent.tools.web import clean_page_text, normalize_url, read_product_page, search_bikes
+from app.agent.tools.web import clean_page_text, is_listing, normalize_url, read_product_page, search_bikes
 from app.config import get_settings
 from app.db import SessionLocal
 from tests.helpers import CUBE_URL, EXTRACT_OK, SEARCH_OK, TAVILY_URL
@@ -156,6 +156,35 @@ async def test_read_product_page(tavily_key: None) -> None:
     respx.post(f"{TAVILY_URL}/extract").respond(json={"results": [], "failed_results": [{"error": "403"}]})
     assert "nicht lesbar (403)" in (await read_product_page(await context(), "https://example.org/x"))["error"]
     assert "Ungültige URL" in (await read_product_page(await context(), "ftp://example.org"))["error"]
+
+
+LISTING_RAW = "Trekkingräder\nFiltern\nSortieren nach\n" + "\n".join(
+    f"Cube Modell {i} - 28 Zoll\n{500 + 100 * i},- €" for i in range(8)
+)
+
+
+def test_is_listing() -> None:
+    """Beratung 14: Kategorie-, Filter- und Preisvergleichsseiten sind keine Produktseiten."""
+    assert is_listing("https://www.fahrrad-xxl.de/fahrraeder/trekkingraeder/radgroesse.28-zoll")
+    assert is_listing("https://www.idealo.de/preisvergleich/ProductCategory/19235F1879583.html")
+    assert is_listing("https://www.fahrrad-xxl.de/fahrraeder/e-bike?pto=1500")
+    assert is_listing("https://www.fahrrad-xxl.de/fahrraeder/trekkingraeder", LISTING_RAW)
+    assert not is_listing(CUBE_URL, EXTRACT_OK["results"][0]["raw_content"])
+    assert not is_listing(CUBE_URL, "Sortieren nach: Bewertungen. Preis 3.299 €")  # wenige Preise
+
+
+@respx.mock
+async def test_listing_pages_are_marked(tavily_key: None) -> None:
+    listing_url = "https://www.fahrrad-xxl.de/fahrraeder/trekkingraeder"
+    respx.post(f"{TAVILY_URL}/extract").respond(json={"results": [{"url": listing_url, "raw_content": LISTING_RAW}]})
+    result = await read_product_page(await context(), listing_url)
+    assert result["listing"] and "einzeln" in result["note"]
+    search = {
+        "results": [{"url": f"{listing_url}/radgroesse.28-zoll", "content": "Trekkingräder"}, SEARCH_OK["results"][0]]
+    }
+    respx.post(f"{TAVILY_URL}/search").respond(json=search)
+    hits = (await search_bikes(await context(), "Trekkingrad 28 Zoll"))["results"]
+    assert [hit.get("listing", False) for hit in hits] == [True, False]
 
 
 def test_normalize_url() -> None:

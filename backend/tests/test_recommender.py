@@ -55,6 +55,7 @@ from app.agent.recommender import (
     model_on_page,
     ranking_only,
     recommender_agent,
+    repeats_earlier_search,
 )
 from app.agent.tools.frame_size import NO_MEASUREMENTS
 from app.agent.tools.web import focus_text, normalize_url
@@ -281,6 +282,49 @@ def test_top_ranks_need_a_price() -> None:
     for rank in range(PRICED_RANKS + 1, MAX_RANKING + 1):
         ranking[rank - 1] = bike(rank, price=None)
     check_sources(BikeRecommendation.model_validate(recommendation(*ranking)), pages)
+
+
+XXL_URL = "https://www.fahrrad-xxl.de/fahrraeder/trekkingraeder"
+XXL_LISTING = (
+    "Trekkingräder261\nFiltern\nZurücksetzen\nSortieren nach\nRelevanz\n"
+    "Cube\nKathmandu Hybrid Pro 750 Variante 1 - 28 Zoll - Diamant - 2026\n3.299,- €\n"
+    "Cube\nNulane Pro FE - 28 Zoll - Diamant - 2027\n899,- €\n"
+    "Cube\nNature ONE FE - 28 Zoll - Trapez - 2027\n649,- €\n"
+    "Cube\nTouring ONE - 28 Zoll - Diamant - 2027\n599,- €\n"
+    "Winora\nDomingo X24 - 28 Zoll - Diamant\n499,99 €\n"
+    "Specialized\nSirrus X 3.0 EQ - 28 Zoll - Diamant - 2026\n799,99 €\n"
+)
+
+
+def test_listing_page_does_not_back_top_ranks() -> None:
+    """Beratung 14: alle fünf Räder nur mit einer fahrrad-xxl-Kategorieseite belegt, ohne jede Ausstattung."""
+    pages = {
+        normalize_url(XXL_URL): XXL_LISTING,
+        normalize_url(CUBE_URL): "Cube Kathmandu Hybrid Pro 750 Variante Trekking, 3.299 €",
+    }
+    top = BikeRecommendation.model_validate(recommendation(bike(1, url=XXL_URL), bike(2)))
+    with pytest.raises(ModelRetry) as error:
+        check_sources(top, pages)
+    message = str(error.value)
+    assert "Platz 1" in message and "Übersichtsseite" in message and "Platz 2" not in message
+    assert 'search_bikes("Cube Kathmandu Hybrid Pro 750 Variante 1", shops=true)' in message
+    # Hinter PRICED_RANKS, im letzten Versuch und ohne Web-Budget genügt die Übersicht
+    later = [bike(i, url=XXL_URL if i > PRICED_RANKS else CUBE_URL) for i in range(1, PRICED_RANKS + 2)]
+    check_sources(BikeRecommendation.model_validate(recommendation(*later)), pages)
+    check_sources(top, pages, final_try=True)
+    check_sources(top, pages, web_budget=False)
+
+
+def test_repeated_search_gets_hint() -> None:
+    """Beratung 14: sieben fast gleiche Händlersuchen mit denselben Übersichtsseiten."""
+    hits = {"results": [{"url": CUBE_URL}, {"url": KTM_URL}]}
+    earlier = [
+        ModelRequest(parts=[UserPromptPart(content="Trekkingrad bis 1500 €")]),
+        ModelRequest(parts=[ToolReturnPart(tool_name="search_bikes", content=hits, tool_call_id="s1")]),
+    ]
+    assert repeats_earlier_search(hits, earlier)
+    assert not repeats_earlier_search(hits, earlier[:1])
+    assert not repeats_earlier_search({"results": [{"url": CUBE_URL}, {"url": "https://shop.de/neu"}]}, earlier)
 
 
 def test_no_price_required_once_web_budget_is_used() -> None:
