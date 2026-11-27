@@ -817,6 +817,71 @@ def salvage_ranking(output: BikeRecommendation, ctx: RunContext[AgentDeps]) -> B
     return salvaged.model_copy(update={"buying_tips": tips})
 
 
+def previous_ranking(messages: list[ModelMessage]) -> BikeRecommendation | None:
+    """Die zuletzt zurückgewiesene Rangliste dieser Antwort; None, wenn es keine gibt oder sie das Schema verletzte."""
+    run = current_run(messages)
+    rejected = {
+        part.tool_call_id
+        for message in run
+        if isinstance(message, ModelRequest)
+        for part in message.parts
+        if getattr(part, "tool_name", None) == "final_recommendation"
+        and (isinstance(part, RetryPromptPart) or (isinstance(part, ToolReturnPart) and part.outcome == "retried"))
+    }
+    calls = [
+        part
+        for message in run
+        if isinstance(message, ModelResponse)
+        for part in message.parts
+        if isinstance(part, ToolCallPart) and part.tool_call_id in rejected
+    ]
+    if not calls:
+        return None
+    try:
+        return BikeRecommendation.model_validate(calls[-1].args_as_dict())
+    except ValueError:
+        return None
+
+
+def bike_key(bike: RankedBike) -> tuple[str, str]:
+    return bike.brand.strip().lower(), bike.model.strip().lower()
+
+
+def dropped_sound_bikes(output: BikeRecommendation, ctx: RunContext[AgentDeps]) -> list[RankedBike]:
+    """Räder der zuletzt zurückgewiesenen Rangliste, die die Rettung bestanden hätten, in `output` aber fehlen."""
+    if not (previous := previous_ranking(ctx.messages)) or not (salvaged := salvage_ranking(previous, ctx)):
+        return []
+    current = {bike_key(b) for b in output.ranking}
+    return [b for b in salvaged.ranking if bike_key(b) not in current]
+
+
+def check_kept_bikes(output: BikeRecommendation, ctx: RunContext[AgentDeps]) -> None:
+    """Beratung 2 (nach dem DB-Reset): Die zweite Rangliste hatte fünf Räder, bemängelt waren nur zwei davon und
+    Anmerkungen in Datenfeldern. Die dritte enthielt ein einziges Rad, Titel „Vorabfrage zur Budget-Flexibilität“:
+    Das Modell schob die zuvor abgelehnte Rückfrage als Rangliste nach und strich dafür zwei einwandfreie Räder."""
+    if len(output.ranking) >= MAX_RANKING or not (dropped := dropped_sound_bikes(output, ctx)):
+        return
+    names = ", ".join(f"{b.brand} {b.model}" for b in dropped)
+    raise ModelRetry(
+        f"Gegenüber Deiner letzten Rangliste fehlen {names}, obwohl an ihnen nichts zu beanstanden war. Nimm sie "
+        "wieder auf; streiche nur Räder, die bemängelt wurden. Eine Rückfrage an den Nutzer gehört nicht in die "
+        "Rangliste, offene Punkte nennst Du in `buying_tips`."
+    )
+
+
+def best_last_attempt(
+    output: BikeRecommendation, ctx: RunContext[AgentDeps], problems: list[str]
+) -> BikeRecommendation | None:
+    """Letzter Versuch: die längere aus der (geretteten) aktuellen und der geretteten vorigen Rangliste. Bei
+    Gleichstand gewinnt die aktuelle."""
+    current = salvage_ranking(output, ctx) if problems else output
+    previous = previous_ranking(ctx.messages)
+    earlier = salvage_ranking(previous, ctx) if previous else None
+    if earlier and (current is None or len(earlier.ranking) > len(current.ranking)):
+        return earlier
+    return current
+
+
 def build_agent() -> Agent[AgentDeps, RecommenderOutput]:
     settings = get_settings()
     agent = Agent(
@@ -888,22 +953,22 @@ def build_agent() -> Agent[AgentDeps, RecommenderOutput]:
         if not isinstance(output, BikeRecommendation):
             return output
         fix_source_urls(output, known_pages(ctx.messages))
+        final_try = ctx.retry >= ctx.max_retries
         global_problems = collect_problems(
             lambda: check_researched(ctx.messages),
             lambda: check_ranking_size(output, ctx),
             lambda: check_placeholders(output),
+            # Im letzten Versuch übernimmt best_last_attempt die gestrichenen Räder
+            *([] if final_try else [lambda: check_kept_bikes(output, ctx)]),
         )
         problems = global_problems + bike_problems(output, ctx)
+        # Letzter Versuch: lieber eine kürzere, belegte Rangliste als „Exceeded maximum output retries“
+        if final_try and not global_problems and (best := best_last_attempt(output, ctx, problems)) is not None:
+            if best is not output:
+                logger.warning("Letzter Versuch: %d Räder statt %d", len(best.ranking), len(output.ranking))
+            return best
         if not problems:
             return output
-        # Letzter Versuch: lieber eine kürzere, belegte Rangliste als „Exceeded maximum output retries“
-        last_attempt = ctx.retry >= ctx.max_retries and not global_problems
-        if last_attempt and (salvaged := salvage_ranking(output, ctx)) is not None:
-            logger.warning(
-                "Letzter Versuch: %d von %d Rädern gestrichen", len(output.ranking) - len(salvaged.ranking),
-                len(output.ranking),
-            )  # fmt: skip
-            return salvaged
         raise ModelRetry("\n\n".join([*problems, KEEP_RESULTS_NOTE]))
 
     return agent

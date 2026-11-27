@@ -619,6 +619,35 @@ async def test_all_problems_reported_at_once_and_last_attempt_keeps_clean_bikes(
     assert "nicht ausreichend belegen" in output.buying_tips[-1]
 
 
+FIVE_ONE_OVER_BUDGET = (
+    "final_recommendation",
+    recommendation(bike(1), bike(2, price=3999), bike(3), bike(4), bike(5)),
+)
+ONE_BIKE = ("final_recommendation", recommendation(bike(1)))
+
+
+async def test_shrunk_ranking_must_keep_sound_bikes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Beratung 2: Statt das bemängelte Rad zu streichen, schrumpfte die Rangliste auf ein Rad und eine Rückfrage."""
+    monkeypatch.setattr("app.agent.recommender.TOOL_BUDGETS", {"search_bikes": 1, "read_product_page": 0})
+    four = ("final_recommendation", recommendation(bike(1), bike(2), bike(3), bike(4)))
+    result = await run(SEARCH, RESEARCH, FRAME, FIVE_ONE_OVER_BUDGET, ONE_BIKE, four)
+    rejections = retry_prompts(result.all_messages())
+    assert len(rejections) == 2
+    assert "Variante 3" in rejections[1] and "Variante 5" in rejections[1] and "fehlen" in rejections[1]
+    assert isinstance(result.output, BikeRecommendation) and len(result.output.ranking) == 4
+
+
+async def test_last_attempt_prefers_longer_previous_ranking() -> None:
+    """Beratung 2: Im letzten Versuch kam ein einziges Rad; die vorige Rangliste hätte gerettet vier ergeben."""
+    result = await run(
+        SEARCH, RESEARCH, FRAME, FIVE_ONE_OVER_BUDGET, FIVE_ONE_OVER_BUDGET, FIVE_ONE_OVER_BUDGET, ONE_BIKE
+    )
+    output = result.output
+    assert isinstance(output, BikeRecommendation)
+    assert [b.model[-1] for b in output.ranking] == ["1", "3", "4", "5"]
+    assert [b.rank for b in output.ranking] == [1, 2, 3, 4]
+
+
 async def test_last_attempt_keeps_bikes_with_data_gaps() -> None:
     """Beratung 32: Fehlende Motorangaben und „(Angabe in Quelle)“ im Motor strichen vier von fünf Rädern."""
     specs = bike(1)["key_specs"]
