@@ -8,7 +8,7 @@ Körpermaßen gibt es eine Rahmengröße aus `recommend_frame_size`.
 
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import replace
 from typing import Any
 from urllib.parse import urlsplit
@@ -250,7 +250,33 @@ def current_run(messages: list[ModelMessage]) -> list[ModelMessage]:
 # ersten FREE_UNKNOWN_URLS solcher Aufrufe je Antwort zählen nicht aufs Budget, weitere schon (sonst gäbe es keine
 # Grenze).
 FREE_UNKNOWN_URLS = 3
+# Ebenso für erneute Abrufe einer schon gelesenen Seite (Beratung 31: fünf Wiederholungen verbrauchten das Budget).
+# Zählten sie gar nicht, bliebe das Tool angeboten, und das Modell könnte endlos wiederholen (Beratung 33)
+FREE_REPEATED_READS = 3
 URL_IN_TEXT = re.compile(r"https?://[^\s<>\"'()\[\]]+")
+
+
+UMLAUTS = str.maketrans({"ä": "a", "ö": "o", "ü": "u", "ß": "ss"})
+
+
+def url_key(url: str) -> str:
+    """Vergleichsschlüssel für URLs, die das Modell beim Abschreiben leicht verändert: ohne Schema und „www.“,
+    Umlaute und ihre Umschreibung gleich. Beratung 31: „…-lastenrader-…“ (so im Suchtreffer) wurde zu
+    „…-lastenraeder-…“, „www.nimms-rad.de“ zu „nimms-rad.de“; beide Belege galten als unbekannt."""
+    parts = urlsplit(normalize_url(url))
+    host = parts.netloc.removeprefix("www.")
+    path = parts.path.lower().translate(UMLAUTS).replace("ae", "a").replace("oe", "o").replace("ue", "u")
+    return f"{host}{path}?{parts.query}" if parts.query else f"{host}{path}"
+
+
+def match_url(url: str, urls: Iterable[str]) -> str | None:
+    """Die bekannte URL zu `url` (exakt oder nach `url_key` gleich), sonst None."""
+    urls = list(urls)
+    normalized = normalize_url(url)
+    if normalized in urls:
+        return normalized
+    key = url_key(url)
+    return next((known for known in urls if url_key(known) == key), None)
 
 
 def readable_urls(messages: list[ModelMessage]) -> set[str]:
@@ -261,7 +287,7 @@ def readable_urls(messages: list[ModelMessage]) -> set[str]:
         if isinstance(message, ModelRequest):
             for part in message.parts:
                 if isinstance(part, UserPromptPart) and isinstance(part.content, str):
-                    urls.update(normalize_url(url) for url in URL_IN_TEXT.findall(part.content))
+                    urls.update(normalize_url(url.rstrip(".,;:!?")) for url in URL_IN_TEXT.findall(part.content))
     return urls
 
 
@@ -297,13 +323,38 @@ def budget_calls(messages: list[ModelMessage], tool_name: str) -> list[ToolCallP
     if tool_name != "read_product_page":
         return calls
     readable = readable_urls(messages)
-    counted, free = [], FREE_UNKNOWN_URLS
+    counted, free, repeats, read = [], FREE_UNKNOWN_URLS, FREE_REPEATED_READS, set()
     for call in calls:
-        if free and normalize_url(page_url(call)) not in readable:
-            free -= 1
-            continue
+        url = page_url(call)
+        if match_url(url, readable) is None:
+            if free:
+                free -= 1
+                continue
+        elif url_key(url) in read:
+            # Erneuter Abruf derselben Seite: läuft nicht (enforce_budgets); die ersten zählen nicht, weitere schon
+            if repeats:
+                repeats -= 1
+                continue
+        else:
+            read.add(url_key(url))
         counted.append(call)
     return counted
+
+
+def read_before(messages: list[ModelMessage], call: ToolCallPart) -> bool:
+    """Hat diese Antwort die Seite von `call` schon vor `call` mit `read_product_page` abgerufen?"""
+    key, readable = url_key(page_url(call)), readable_urls(messages)
+    for message in current_run(messages):
+        if not isinstance(message, ModelResponse):
+            continue
+        for part in message.parts:
+            if not (isinstance(part, ToolCallPart) and part.tool_name == "read_product_page"):
+                continue
+            if part.tool_call_id == call.tool_call_id:
+                return False
+            if url_key(page_url(part)) == key and match_url(page_url(part), readable) is not None:
+                return True
+    return False
 
 
 def calls_in_run(messages: list[ModelMessage], tool_name: str) -> int:
@@ -367,7 +418,15 @@ async def enforce_budgets(
     der Websuche stammen (siehe FREE_UNKNOWN_URLS)."""
     if call.tool_name == "read_product_page":
         url, readable = page_url(call), readable_urls(ctx.messages)
-        if normalize_url(url) not in readable:
+        if match_url(url, readable) is not None and read_before(ctx.messages, call):
+            # Beratung 31: Monty dreimal, Tern dreimal, FAZ zweimal gelesen, nachdem der Validator Angaben bemängelt
+            # hatte; die Wiederholungen verbrauchten das Budget für weitere Räder
+            return tool_error(
+                f"Die Seite {url} hast Du in dieser Antwort schon gelesen, ihr Text steht weiter oben; ein neuer "
+                "Abruf liefert nichts anderes. Nimm die Angaben von dort, belege das Rad mit einem anderen Treffer "
+                "aus `search_bikes` oder ersetze es."
+            )
+        if match_url(url, readable) is None:
             # Beratung 30: Das Modell baute trotz Ablehnung weiter URLs, eine davon zweimal; deshalb gleich Vorschläge
             suggestions = similar_urls(url, readable)
             hint = (
@@ -458,6 +517,13 @@ def output_rejected(messages: list[ModelMessage], tool_name: str) -> bool:
     return rejections(messages, tool_name) > 0
 
 
+def fix_source_urls(output: BikeRecommendation, pages: dict[str, str]) -> None:
+    """Ersetzt leicht verschriebene Beleg-URLs (siehe `url_key`) durch die bekannte URL, damit der Link stimmt."""
+    for bike in output.ranking:
+        if (known := match_url(bike.price_source_url, pages)) and known != normalize_url(bike.price_source_url):
+            bike.price_source_url = known
+
+
 def check_sources(output: BikeRecommendation, pages: dict[str, str], web_budget: bool = True) -> None:
     """`web_budget=False`, wenn Websuchen und Seitenabrufe dieser Antwort aufgebraucht sind: Dann ließe sich nichts
     mehr nachsuchen. Fehlende Preise gelten, und für unbelegte Räder heißt die Rückmeldung „streichen“ statt
@@ -471,7 +537,8 @@ def check_sources(output: BikeRecommendation, pages: dict[str, str], web_budget:
     problems = []
     for bike in output.ranking:
         name = f"Platz {bike.rank} ({bike.brand} {bike.model})"
-        text = pages.get(normalize_url(bike.price_source_url))
+        known = match_url(bike.price_source_url, pages)
+        text = pages[known] if known else None
         if text is None:
             problems.append(
                 f"{name}: Die URL {bike.price_source_url} stammt nicht aus `search_bikes` bzw. `read_product_page`."
@@ -561,12 +628,30 @@ def check_spec_notes(output: BikeRecommendation) -> None:
         )
 
 
-def check_electric(output: BikeRecommendation) -> None:
+def without_spec_notes(bike: RankedBike) -> RankedBike:
+    """Setzt Datenfelder mit Anmerkungen (siehe `check_spec_notes`) auf null."""
+    noted = {
+        field: None
+        for field, value in bike.key_specs.model_dump().items()
+        if isinstance(value, str) and SPEC_NOTE.search(value)
+    }
+    return bike.model_copy(update={"key_specs": bike.key_specs.model_copy(update=noted)}) if noted else bike
+
+
+def motor_unknown(output: BikeRecommendation) -> list[RankedBike]:
+    """E-Bike gewünscht, aber weder Motor noch Akku angegeben."""
+    if output.requirements.electric is not True:
+        return []
+    return [b for b in output.ranking if not (b.key_specs.motor or b.key_specs.battery_wh)]
+
+
+def check_electric(output: BikeRecommendation, *, require_specs: bool = True) -> None:
+    """`require_specs=False` (beim Retten der Rangliste): Ein E-Bike ohne Angaben zu Motor und Akku bleibt drin."""
     motorized = [b for b in output.ranking if b.key_specs.motor or b.key_specs.battery_wh]
     if output.requirements.electric is False and motorized:
         names = ", ".join(f"Platz {b.rank}" for b in motorized)
         raise ModelRetry(f"Der Nutzer möchte ein Rad ohne Motor, {names} hat einen Motor. Ersetze es.")
-    if output.requirements.electric is True and (unknown := [b for b in output.ranking if b not in motorized]):
+    if require_specs and (unknown := motor_unknown(output)):
         names = ", ".join(f"Platz {b.rank}" for b in unknown)
         raise ModelRetry(
             f"Der Nutzer möchte ein E-Bike, aber für {names} fehlen Motor und Akku. Lies die Produktseite mit "
@@ -695,30 +780,41 @@ def check_researched(messages: list[ModelMessage]) -> None:
         )
 
 
-def bike_problems(output: BikeRecommendation, ctx: RunContext[AgentDeps]) -> list[str]:
-    """Prüfungen, die einzelne Räder betreffen; ein betroffenes Rad lässt sich notfalls streichen."""
+def bike_problems(output: BikeRecommendation, ctx: RunContext[AgentDeps], *, salvaging: bool = False) -> list[str]:
+    """Prüfungen, die einzelne Räder betreffen; ein betroffenes Rad lässt sich notfalls streichen. Beim Retten
+    (`salvaging`) zählen fehlende Motor-/Akkuangaben nicht: Sie sind eine Lücke in den Daten, kein falsches Rad."""
     return collect_problems(
         lambda: check_sources(output, known_pages(ctx.messages), web_budget=web_budget_left(ctx.messages)),
         lambda: check_budget(output),
         lambda: check_spec_notes(output),
-        lambda: check_electric(output),
+        lambda: check_electric(output, require_specs=not salvaging),
         lambda: check_frame_sizes(output, ctx.deps, ctx.messages),
     )
 
 
 def salvage_ranking(output: BikeRecommendation, ctx: RunContext[AgentDeps]) -> BikeRecommendation | None:
     """Behält die Räder, die alle Prüfungen bestehen (geprüft auf dem Rang, den sie dann bekommen), und rückt sie auf;
-    None, wenn keines übrig bleibt."""
+    None, wenn keines übrig bleibt. Datenfelder mit Anmerkungen werden vorher geleert statt das Rad zu streichen.
+
+    Beratung 32: Im letzten Versuch fehlten bei drei Lastenrädern aus Testartikeln Motor und Akku, beim vierten
+    stand „Bosch Performance Line (Angabe in Quelle)“ als Motor; gestrichen blieb ein einziges Rad übrig."""
     kept: list[RankedBike] = []
     for bike in output.ranking:
-        candidate = bike.model_copy(update={"rank": len(kept) + 1})
-        if not bike_problems(output.model_copy(update={"ranking": [candidate]}), ctx):
+        candidate = without_spec_notes(bike.model_copy(update={"rank": len(kept) + 1}))
+        if not bike_problems(output.model_copy(update={"ranking": [candidate]}), ctx, salvaging=True):
             kept.append(candidate)
     if not kept:
         return None
-    dropped = len(output.ranking) - len(kept)
-    tip = f"{dropped} weitere Kandidaten ließen sich nicht ausreichend belegen und fehlen deshalb in der Liste."
-    return output.model_copy(update={"ranking": kept, "buying_tips": [*output.buying_tips, tip]})
+    salvaged = output.model_copy(update={"ranking": kept})
+    tips = list(output.buying_tips)
+    if dropped := len(output.ranking) - len(kept):
+        tips.append(
+            f"{dropped} weitere Kandidaten ließen sich nicht ausreichend belegen und fehlen deshalb in der Liste."
+        )
+    if unknown := motor_unknown(salvaged):
+        names = ", ".join(f"Platz {b.rank}" for b in unknown)
+        tips.append(f"Für {names} ließen sich Motor und Akku nicht belegen; frag beim Händler nach.")
+    return salvaged.model_copy(update={"buying_tips": tips})
 
 
 def build_agent() -> Agent[AgentDeps, RecommenderOutput]:
@@ -791,6 +887,7 @@ def build_agent() -> Agent[AgentDeps, RecommenderOutput]:
             check_answer_needed(ctx)
         if not isinstance(output, BikeRecommendation):
             return output
+        fix_source_urls(output, known_pages(ctx.messages))
         global_problems = collect_problems(
             lambda: check_researched(ctx.messages),
             lambda: check_ranking_size(output, ctx),

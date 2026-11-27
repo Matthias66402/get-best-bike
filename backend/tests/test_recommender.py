@@ -1,5 +1,8 @@
 """Berater, Output-Validator und Chat-Endpunkt mit geskriptetem Modell statt echtem LLM; Tavily per respx."""
 
+import json
+import uuid
+from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from typing import Any
 
@@ -17,7 +20,7 @@ from pydantic_ai import (
     ToolReturnPart,
     UserPromptPart,
 )
-from pydantic_ai.models.function import FunctionModel
+from pydantic_ai.models.function import AgentInfo, DeltaToolCall, DeltaToolCalls, FunctionModel
 
 from app.agent.compaction import EARLIER_PAGE_CHARS
 from app.agent.deps import AgentDeps
@@ -32,15 +35,20 @@ from app.agent.recommendation_schema import (
 )
 from app.agent.recommender import (
     FRAME_SIZE_CALLS,
+    FREE_REPEATED_READS,
     INSTRUCTIONS,
     PRICED_RANKS,
+    TOOL_BUDGETS,
+    calls_in_run,
     category_conflict,
     check_placeholders,
     check_ranking_size,
     check_sources,
     check_spec_notes,
+    fix_source_urls,
     frame_size_budget,
     known_pages,
+    match_url,
     model_on_page,
     recommender_agent,
 )
@@ -611,6 +619,20 @@ async def test_all_problems_reported_at_once_and_last_attempt_keeps_clean_bikes(
     assert "nicht ausreichend belegen" in output.buying_tips[-1]
 
 
+async def test_last_attempt_keeps_bikes_with_data_gaps() -> None:
+    """Beratung 32: Fehlende Motorangaben und „(Angabe in Quelle)“ im Motor strichen vier von fünf Rädern."""
+    specs = bike(1)["key_specs"]
+    gap = bike(2, key_specs={**specs, "motor": None, "battery_wh": None})
+    noted = bike(3, key_specs={**specs, "motor": "Bosch Performance Line (Angabe in Quelle)"})
+    bad = ("final_recommendation", recommendation(bike(1), gap, noted))
+    result = await run(SEARCH, RESEARCH, FRAME, bad, bad, bad, bad)
+    output = result.output
+    assert isinstance(output, BikeRecommendation) and [b.rank for b in output.ranking] == [1, 2, 3]
+    assert output.ranking[2].key_specs.motor is None  # Anmerkung geleert, Akku bleibt
+    assert output.ranking[2].key_specs.battery_wh == 750
+    assert "Platz 2" in output.buying_tips[-1] and "Motor und Akku" in output.buying_tips[-1]
+
+
 async def test_frame_size_tool_lists_sizes_already_determined() -> None:
     tool_def = ToolDefinition(name="recommend_frame_size", description="Empfiehlt die Rahmengröße.")
     call = ModelResponse(parts=[ToolCallPart("recommend_frame_size", {"category": "kids"}, tool_call_id="c1")])
@@ -701,6 +723,90 @@ async def test_invented_url_is_not_fetched_and_does_not_use_budget(
     assert "stammt nicht aus `search_bikes`" in returns[0]["error"]
     assert CUBE_URL in returns[0]["error"]  # Vorschlag: Treffer mit denselben Wörtern im Pfad
     assert returns[1]["url"] == CUBE_URL  # trotz Budget 1: der abgelehnte Aufruf zählt nicht
+    assert tavily.routes[1].call_count == 1
+
+
+def test_match_url_tolerates_umlaut_spelling_and_www() -> None:
+    """Beratung 31: „lastenrader“ aus dem Treffer als „lastenraeder“ abgeschrieben, „www.“ weggelassen."""
+    known = [
+        "https://www.bike-magazin.de/lastenraeder/monty-v8-neue-e-lastenrader-aus-spanien",
+        "https://www.nimms-rad.de/news/lastenraeder-unter-5000-euro",
+    ]
+    assert (
+        match_url("https://www.bike-magazin.de/lastenraeder/monty-v8-neue-e-lastenraeder-aus-spanien", known)
+        == (known[0])
+    )
+    assert match_url("https://nimms-rad.de/news/lastenraeder-unter-5000-euro/", known) == known[1]
+    assert match_url("https://www.bike-magazin.de/lastenraeder/monty-v6", known) is None
+
+
+def test_misspelled_source_url_is_corrected() -> None:
+    misspelled = CUBE_URL.replace("www.", "")
+    pages = {normalize_url(CUBE_URL): "Cube Kathmandu Hybrid Pro 750 Trekking, 3.299 €"}
+    rec = BikeRecommendation.model_validate(recommendation(bike(1, url=misspelled)))
+    fix_source_urls(rec, pages)
+    assert rec.ranking[0].price_source_url == normalize_url(CUBE_URL)
+    check_sources(rec, pages)
+
+
+async def test_repeated_page_read_is_refused_and_does_not_use_budget(
+    monkeypatch: pytest.MonkeyPatch, tavily: respx.MockRouter
+) -> None:
+    """Beratung 31: Dieselben Seiten wurden drei- und zweimal gelesen, danach fehlte das Budget für weitere Räder."""
+    monkeypatch.setattr("app.agent.recommender.TOOL_BUDGETS", {"search_bikes": 10, "read_product_page": 2})
+    read = ("read_product_page", {"url": CUBE_URL})
+    steps = (SEARCH, read, read, ("read_product_page", {"url": KTM_URL}), RESEARCH, FRAME)
+    result = await run(*steps, ("final_recommendation", recommendation()))
+    returns = [
+        part.content
+        for message in result.all_messages()
+        if isinstance(message, ModelRequest)
+        for part in message.parts
+        if isinstance(part, ToolReturnPart) and part.tool_name == "read_product_page"
+    ]
+    assert "schon gelesen" in returns[1]["error"]
+    assert returns[2]["url"] == KTM_URL  # trotz Budget 2: die Wiederholung zählt nicht
+    assert tavily.routes[1].call_count == 2
+
+
+def test_repeated_reads_count_after_free_ones() -> None:
+    """Beratung 33: Zählen Wiederholungen nie, bleibt das Tool angeboten und das Modell kann endlos wiederholen."""
+    search = ToolCallPart("search_bikes", {"query": "x"}, tool_call_id="s")
+    messages: list[Any] = [
+        ModelRequest(parts=[UserPromptPart("Trekking-E-Bike")]),
+        ModelResponse(parts=[search]),
+        ModelRequest(parts=[ToolReturnPart("search_bikes", SEARCH_OK, tool_call_id="s")]),
+        ModelResponse(
+            parts=[ToolCallPart("read_product_page", {"url": CUBE_URL}, tool_call_id=f"r{i}") for i in range(6)]
+        ),
+    ]
+    assert calls_in_run(messages, "read_product_page") == 1 + 6 - 1 - FREE_REPEATED_READS
+
+
+async def test_endless_repeated_reads_end_the_loop(tavily: respx.MockRouter) -> None:
+    """Beratung 33: Nach dem ersten Abruf las das Modell dieselbe Seite 23-mal neu, jedes Mal abgelehnt und ohne
+    Budget zu verbrauchen, bis request_limit=40 die Beratung ohne Ergebnis abbrach. Ein Modell, das liest, solange
+    das Tool angeboten wird, muss trotzdem zu einer Rangliste kommen."""
+    steps = iter([SEARCH, RESEARCH, FRAME])
+    reads = 0
+
+    async def stream(messages: list[Any], info: AgentInfo) -> AsyncIterator[DeltaToolCalls]:
+        nonlocal reads
+        name, args = next(steps, None) or (None, None)
+        if name is None and any(tool.name == "read_product_page" for tool in info.function_tools):
+            reads += 1
+            name, args = "read_product_page", {"url": CUBE_URL}
+        elif name is None:
+            name, args = "final_recommendation", recommendation()
+        yield {0: DeltaToolCall(name=name, json_args=json.dumps(args), tool_call_id=f"call_{uuid.uuid4().hex[:12]}")}
+
+    with recommender_agent.override(model=FunctionModel(stream_function=stream)):
+        async with httpx.AsyncClient() as http:
+            deps = AgentDeps(settings=get_settings(), http=http, session_factory=SessionLocal, user_name="Ute")
+            async with recommender_agent.run_stream_events("Trekking-E-Bike bis 3500 €", deps=deps) as events:
+                result = [event.result async for event in events if hasattr(event, "result")][-1]
+    assert isinstance(result.output, BikeRecommendation)
+    assert reads == 1 + FREE_REPEATED_READS + TOOL_BUDGETS["read_product_page"] - 1
     assert tavily.routes[1].call_count == 1
 
 

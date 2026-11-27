@@ -36,6 +36,10 @@ PASSWORD = "secret-pass-123"
 
 @pytest.fixture(autouse=True)
 async def clean_db() -> AsyncIterator[None]:
+    # Wurde app.* vor dieser Datei importiert (z. B. per `pytest -p`), zeigt die Engine noch auf die Entwicklungs-DB;
+    # das TRUNCATE hat so schon einmal alle Beratungen gelöscht
+    if engine.url.database != "bike_test":
+        pytest.exit(f"Tests laufen gegen {engine.url.database!r} statt 'bike_test'; abgebrochen, nichts gelöscht.")
     async with engine.begin() as conn:
         await conn.execute(
             text("TRUNCATE users, consultations, chat_messages, documents, chunks, web_cache RESTART IDENTITY CASCADE")

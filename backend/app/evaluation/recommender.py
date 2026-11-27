@@ -25,9 +25,8 @@ from pydantic_ai import ModelMessagesTypeAdapter, ModelRequest, ModelResponse, T
 
 from app.agent.deps import AgentDeps
 from app.agent.recommendation_schema import BikeRecommendation, ClarificationQuestion
-from app.agent.recommender import BUDGET_TOLERANCE, known_pages
+from app.agent.recommender import BUDGET_TOLERANCE, known_pages, match_url
 from app.agent.runner import RunOutcome, run_recommender
-from app.agent.tools.web import normalize_url
 from app.config import get_settings
 from app.db import SessionLocal, engine
 
@@ -69,7 +68,7 @@ def check_output(case: dict[str, Any], outcome: RunOutcome, messages: list[Any])
     checks = {
         "Rangliste": True,
         "1-5 Räder": 1 <= len(rec.ranking) <= 5,
-        "Quellen belegt": all(normalize_url(b.price_source_url) in pages for b in rec.ranking),
+        "Quellen belegt": all(match_url(b.price_source_url, pages) for b in rec.ranking),
         "Kategorie": all(b.category.value in case.get("category", [b.category.value]) for b in rec.ranking),
     }
     if budget := case.get("budget_eur"):
