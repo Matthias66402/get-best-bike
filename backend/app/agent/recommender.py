@@ -37,15 +37,16 @@ from app.agent.history import researched_categories
 from app.agent.models import build_model, model_settings
 from app.agent.recommendation_schema import (
     MAX_RANKING,
+    VAGUE_NAME,
     BikeCategory,
     BikeRecommendation,
     ClarificationQuestion,
     RankedBike,
     TextAnswer,
 )
-from app.agent.tools.common import tool_error
+from app.agent.tools.common import model_family, tool_error, words
 from app.agent.tools.frame_size import NO_MEASUREMENTS, recommend_frame_size
-from app.agent.tools.prices import price_in_text
+from app.agent.tools.prices import price_in_text, prices_in_text
 from app.agent.tools.research import research_knowledge
 from app.agent.tools.web import normalize_url, read_product_page, search_bikes
 from app.config import get_settings
@@ -104,16 +105,6 @@ CONTEXT_CHARS = 400
 MODEL_WORD_SHARE = 0.5
 
 
-def words(text: str) -> list[str]:
-    """Kleingeschriebene Wörter ohne Satz- und Sonderzeichen ("E‑Power Easy" → ["e", "power", "easy"])."""
-    return re.findall(r"[0-9a-zäöüß]+", text.casefold())
-
-
-def model_family(model: str) -> str | None:
-    """Erstes aussagekräftiges Wort des Modellnamens, z. B. "talon" in "Talon E+ EX Gen2"."""
-    return next((w for w in words(model) if len(w) >= 3 and not w.isdigit()), None)
-
-
 def model_on_page(model: str, text: str) -> bool:
     """Steht das Modell auf der Seite? Die Modellfamilie muss vorkommen und mindestens die Hälfte der Wörter."""
     model_words, page_words = words(model), set(words(text))
@@ -155,10 +146,12 @@ Vorgehen:
 2. Hintergrund: Vor der ersten Rangliste einer Beratung `research_knowledge` aufrufen (falls noch nicht im Verlauf)
    und die Hinweise bei der Auswahl berücksichtigen.
 3. Kandidaten finden mit `search_bikes`: 2-3 Suchen in derselben Runde, z. B. nach Tests bzw. Bestenlisten der
-   Kategorie im Budget und nach konkreten Modellen. Nur Modelle aus den Ergebnissen, nichts aus dem Gedächtnis.
+   Kategorie im Budget und mit `shops=true` nach Angeboten im Budget (z. B. "Gravelbike Carbon 2x bis 2500 Euro").
+   Nur Modelle aus den Ergebnissen, nichts aus dem Gedächtnis.
 4. Belegen mit `read_product_page` für die aussichtsreichsten Kandidaten (alle in derselben Runde): Preis,
    Ausstattung, Gewicht und, falls vorhanden, die Größentabelle. Nur URLs aus den Suchergebnissen; selbst
-   zusammengesetzte URLs lehnt das Tool ab. Fehlt eine Produktseite, suche mit `search_bikes` nach dem Modell.
+   zusammengesetzte URLs lehnt das Tool ab. Fehlt eine Produktseite oder ein Euro-Preis, suche das Modell mit
+   `search_bikes` und `shops=true`.
 5. Rahmengröße mit `recommend_frame_size` je Rad (mit Größentabelle der Produktseite, falls vorhanden), alle in
    derselben Runde, sobald Körpermaße bekannt sind (Nachricht oder Profil). `frame_size` muss zum Rad passen:
    Wünscht der Nutzer ausdrücklich eine Größe (z. B. 24 Zoll) und nennt das Tool sie als `alternative`, trage sie
@@ -248,8 +241,9 @@ def current_run(messages: list[ModelMessage]) -> list[ModelMessage]:
 # Seitenabrufe nur für URLs aus der Websuche (oder vom Nutzer genannt); andere lädt der Code nicht. Beratung 29: sechs
 # von neun Abrufen gingen an selbst gebaute URLs (404), danach war das Budget weg und es kam keine Rangliste. Die
 # ersten FREE_UNKNOWN_URLS solcher Aufrufe je Antwort zählen nicht aufs Budget, weitere schon (sonst gäbe es keine
-# Grenze).
-FREE_UNKNOWN_URLS = 3
+# Grenze). Beratung 7: Bei 3 freien zählten sechs abgelehnte Abrufe, nach vier gelesenen Seiten galt das Budget als
+# aufgebraucht, und Platz 1 bis 3 durften ohne Preis bleiben.
+FREE_UNKNOWN_URLS = 8
 # Ebenso für erneute Abrufe einer schon gelesenen Seite (Beratung 31: fünf Wiederholungen verbrauchten das Budget).
 # Zählten sie gar nicht, bliebe das Tool angeboten, und das Modell könnte endlos wiederholen (Beratung 33)
 FREE_REPEATED_READS = 3
@@ -311,6 +305,16 @@ def page_url(call: ToolCallPart) -> str:
         return ""
 
 
+def read_key(call: ToolCallPart) -> str:
+    """Was ein Seitenabruf liest: die Seite und ggf. das Modell, auf das er zielt (`model`). Derselbe Testbericht für
+    ein anderes Modell ist keine Wiederholung (Beratung 8)."""
+    try:
+        model = str(call.args_as_dict().get("model") or "")
+    except ValueError:
+        model = ""
+    return f"{url_key(page_url(call))}#{model_family(model) or ''}"
+
+
 def budget_calls(messages: list[ModelMessage], tool_name: str) -> list[ToolCallPart]:
     """Aufrufe von `tool_name` in dieser Antwort, die aufs Budget zählen."""
     calls = [
@@ -330,20 +334,20 @@ def budget_calls(messages: list[ModelMessage], tool_name: str) -> list[ToolCallP
             if free:
                 free -= 1
                 continue
-        elif url_key(url) in read:
+        elif read_key(call) in read:
             # Erneuter Abruf derselben Seite: läuft nicht (enforce_budgets); die ersten zählen nicht, weitere schon
             if repeats:
                 repeats -= 1
                 continue
         else:
-            read.add(url_key(url))
+            read.add(read_key(call))
         counted.append(call)
     return counted
 
 
 def read_before(messages: list[ModelMessage], call: ToolCallPart) -> bool:
-    """Hat diese Antwort die Seite von `call` schon vor `call` mit `read_product_page` abgerufen?"""
-    key, readable = url_key(page_url(call)), readable_urls(messages)
+    """Hat diese Antwort die Seite von `call` (mit demselben `model`) schon vor `call` abgerufen?"""
+    key, readable = read_key(call), readable_urls(messages)
     for message in current_run(messages):
         if not isinstance(message, ModelResponse):
             continue
@@ -352,7 +356,7 @@ def read_before(messages: list[ModelMessage], call: ToolCallPart) -> bool:
                 continue
             if part.tool_call_id == call.tool_call_id:
                 return False
-            if url_key(page_url(part)) == key and match_url(page_url(part), readable) is not None:
+            if read_key(part) == key and match_url(page_url(part), readable) is not None:
                 return True
     return False
 
@@ -422,9 +426,9 @@ async def enforce_budgets(
             # Beratung 31: Monty dreimal, Tern dreimal, FAZ zweimal gelesen, nachdem der Validator Angaben bemängelt
             # hatte; die Wiederholungen verbrauchten das Budget für weitere Räder
             return tool_error(
-                f"Die Seite {url} hast Du in dieser Antwort schon gelesen, ihr Text steht weiter oben; ein neuer "
-                "Abruf liefert nichts anderes. Nimm die Angaben von dort, belege das Rad mit einem anderen Treffer "
-                "aus `search_bikes` oder ersetze es."
+                f"Die Seite {url} hast Du in dieser Antwort schon so gelesen, ihr Text steht weiter oben; ein neuer "
+                "Abruf liefert nichts anderes. Fehlt ein Modell, weil die Seite gekürzt war, rufe sie mit `model` "
+                "auf; sonst nimm die Angaben von dort, belege das Rad mit einem anderen Treffer oder ersetze es."
             )
         if match_url(url, readable) is None:
             # Beratung 30: Das Modell baute trotz Ablehnung weiter URLs, eine davon zweimal; deshalb gleich Vorschläge
@@ -466,28 +470,58 @@ WEB_BUDGET_USED_NOTE = (
 )
 
 
+def question_needless(ctx: RunContext[AgentDeps]) -> bool:
+    """Einsatzzweck und Budget sind laut Intake bekannt; dann lehnt `check_question_needed` jede Rückfrage ab."""
+    return bool(ctx.deps.criteria.get("use_case")) and bool(ctx.deps.criteria.get("budget_eur"))
+
+
+# Fehlermeldungen aus http_error_message (Tavily nicht erreichbar, Zeitüberschreitung, HTTP-Fehler)
+NETWORK_ERROR = re.compile(r"nicht erreichbar|nicht rechtzeitig geantwortet|meldet HTTP")
+WEB_OUTAGE_ERRORS = 2
+
+
+def web_outage(messages: list[ModelMessage]) -> bool:
+    """Scheiterten in dieser Antwort mehrere Web-Aufrufe mit Netzwerkfehlern? Dann soll das Modell das mit
+    `answer_user` sagen können (siehe INSTRUCTIONS), statt Räder ohne Belege auszugeben."""
+    run = current_run(messages)
+    errors = [
+        content
+        for name in TOOL_BUDGETS
+        for content in tool_returns(run, name)
+        if isinstance(content, dict) and NETWORK_ERROR.search(str(content.get("error", "")))
+    ]
+    return len(errors) >= WEB_OUTAGE_ERRORS
+
+
 def ranking_only(ctx: RunContext[AgentDeps]) -> bool:
-    """Steht eine Rangliste an und gibt es gelesene Seiten, bleibt nur die Rangliste als Ausgabe, sobald die Web-Tools
-    aufgebraucht sind oder in dieser Antwort schon eine Rückfrage bzw. Textantwort zurückgewiesen wurde.
+    """Steht eine Rangliste an, bleibt nur die Rangliste als Ausgabe, wenn Einsatzzweck und Budget bekannt sind, oder
+    sobald es gelesene Seiten gibt und die Web-Tools aufgebraucht sind bzw. schon eine Rückfrage oder Textantwort
+    zurückgewiesen wurde. Ausnahmen: Ausfall der Websuche und, wenn Einsatzzweck oder Budget fehlen, der letzte
+    Versuch, damit der Lauf nicht an der Wiederholungsgrenze scheitert. Stehen beide fest, rettet `best_last_attempt`
+    die Rangliste; Beratung 8: Im letzten Versuch fragte das Modell per `answer_user` nach 10 % mehr Budget.
 
     Beratung 29: Mit leerem Web-Budget fragte das Modell erst per `ask_user`, dann per `answer_user`, ob es weiter
     suchen darf; die zweite Textantwort beendete den Lauf ohne Rangliste. Beratung 30: Nach einer Rangliste mit fünf
-    Mängeln wich es auf „Soll ich recherchieren?“ aus, die zweite Rückfrage galt. Mit nur noch der Rangliste kann es
-    nicht ausweichen, und unbelegte Räder streicht der Validator. Im letzten Versuch stehen wieder alle Ausgaben
-    offen, damit der Lauf nicht an der Wiederholungsgrenze scheitert."""
+    Mängeln wich es auf „Soll ich recherchieren?“ aus, die zweite Rückfrage galt. Beratungen 4 bis 6: Rückfrage per
+    `ask_user` bzw., als die ausgeblendet war, per `answer_user`, obwohl Einsatzzweck und Budget feststanden; jede
+    Ablehnung kostete eine der Korrekturen, die danach für die Rangliste fehlten."""
     evaded = output_rejected(ctx.messages, "ask_user") or output_rejected(ctx.messages, "answer_user")
+    stuck = bool(known_pages(ctx.messages)) and (evaded or not web_budget_left(ctx.messages))
+    needless = question_needless(ctx)
     return (
         ctx.deps.ranking_due
         and bool(ctx.deps.settings.tavily_api_key)
-        and (evaded or not web_budget_left(ctx.messages))
-        and bool(known_pages(ctx.messages))
-        and ctx.retry < ctx.max_retries
+        and (needless or stuck)
+        and not web_outage(ctx.messages)
+        and (needless or ctx.retry < ctx.max_retries)
     )
 
 
 async def offer_outputs(ctx: RunContext[AgentDeps], tool_defs: list[ToolDefinition]) -> list[ToolDefinition]:
     if ranking_only(ctx):
         return [tool_def for tool_def in tool_defs if tool_def.name == "final_recommendation"]
+    if question_needless(ctx):
+        return [tool_def for tool_def in tool_defs if tool_def.name != "ask_user"]
     return tool_defs
 
 
@@ -524,11 +558,14 @@ def fix_source_urls(output: BikeRecommendation, pages: dict[str, str]) -> None:
             bike.price_source_url = known
 
 
-def check_sources(output: BikeRecommendation, pages: dict[str, str], web_budget: bool = True) -> None:
+def check_sources(
+    output: BikeRecommendation, pages: dict[str, str], web_budget: bool = True, *, salvaging: bool = False
+) -> None:
     """`web_budget=False`, wenn Websuchen und Seitenabrufe dieser Antwort aufgebraucht sind: Dann ließe sich nichts
-    mehr nachsuchen. Fehlende Preise gelten, und für unbelegte Räder heißt die Rückmeldung „streichen“ statt
-    „suchen“ (Beratung 22: Das Modell wollte das Radon per Suche ersetzen, fand kein Such-Tool mehr und lief in
-    eine Schleife)."""
+    mehr nachsuchen. Fehlende Preise gelten, außer die Belegseite nennt beim Modell einen Euro-Preis, und für
+    unbelegte Räder heißt die Rückmeldung „streichen“ statt „suchen“ (Beratung 22: Das Modell wollte das Radon per
+    Suche ersetzen, fand kein Such-Tool mehr und lief in eine Schleife). Beim Retten (`salvaging`) bleibt ein
+    fehlender Preis eine Lücke in den Daten und kein Grund zum Streichen."""
     if not pages:
         raise ModelRetry(
             "Die Rangliste braucht Belege aus der Websuche. Suche mit `search_bikes` nach passenden Modellen; "
@@ -579,13 +616,26 @@ def check_sources(output: BikeRecommendation, pages: dict[str, str], web_budget:
             problems.append(
                 f"{name}: Der Preis {bike.price_eur:g} € steht auf {bike.price_source_url} nicht beim Modell. "
                 "Übernimm den Preis von der Seite (`prices_eur`), lies die Produktseite mit `read_product_page` "
-                "oder setze null."
+                "(bei einer gekürzten Seite mit `model`) oder setze null."
             )
         if bike.price_eur is None and bike.rank <= PRICED_RANKS and web_budget:
             problems.append(
                 f"{name}: Für Platz 1 bis {PRICED_RANKS} braucht es einen belegten Preis. Suche das Modell mit "
-                "`search_bikes` (Modellname + Preis) und lies ein Angebot mit `read_product_page`; findest Du "
+                "`search_bikes` (Modellname, `shops=true`) und lies ein Angebot mit `read_product_page`; findest Du "
                 "keinen Preis, ersetze das Rad oder setze es weiter nach hinten."
+            )
+        elif (
+            bike.price_eur is None
+            and bike.rank <= PRICED_RANKS
+            and not salvaging
+            and (found := prices_in_text(context))
+        ):
+            # Beratung 7: Mit aufgebrauchtem Budget setzte das Modell alle Preise auf null, auch die 2.000 € des Cube
+            # Nuroad C:62, die auf der Belegseite beim Modell standen und im Versuch davor nicht bemängelt waren
+            listed = ", ".join(f"{price:g} €" for price in dict.fromkeys(found))
+            problems.append(
+                f"{name}: Die Seite {bike.price_source_url} nennt beim Modell {listed}. Übernimm den Preis, der zu "
+                "diesem Modell gehört, statt null."
             )
     if problems:
         message = "Nicht belegte Angaben in der Rangliste:\n- " + "\n- ".join(problems)
@@ -610,6 +660,29 @@ def check_budget(output: BikeRecommendation) -> None:
         raise ModelRetry(
             f"Budget {budget:g} €: {names} liegt mehr als {BUDGET_TOLERANCE:.0%} darüber. Ersetze diese Räder durch "
             "günstigere Kandidaten aus der Websuche oder lass sie weg."
+        )
+
+
+def check_specific_models(output: BikeRecommendation, web_budget: bool = True) -> None:
+    """Jeder Platz ist ein konkretes Modell. Beratungen 5 und 6: „Grizl (Aluminium-Varianten)“, „Nuroad /
+    Nuroad-ähnliche Alu-Modelle“ und „Allgemeine Händlerangebote“, belegt mit Testberichten und Kategorieseiten.
+    Bemängelt wurden sie erst als unbelegt, als das Web-Budget aufgebraucht war; dann blieb nur Streichen."""
+    vague = [
+        f"Platz {b.rank} („{b.brand} {b.model}“)"
+        for b in output.ranking
+        if VAGUE_NAME.search(b.brand) or VAGUE_NAME.search(b.model)
+    ]
+    if vague:
+        raise ModelRetry(
+            f"Sammeleinträge statt eines Modells: {', '.join(vague)}. Jeder Platz ist genau ein Modell mit Namen wie "
+            "auf seiner Produktseite, z. B. „Grizl 7“ statt „Grizl (Alu-Varianten)“. "
+            + (
+                "Such das konkrete Modell mit `search_bikes` (`shops=true`) und belege es mit einer Produkt- oder "
+                "Händlerseite, "
+                "oder ersetze den Platz."
+                if web_budget
+                else "Nimm ein konkretes Modell von den gelesenen Seiten oder streiche den Platz."
+            )
         )
 
 
@@ -784,9 +857,12 @@ def bike_problems(output: BikeRecommendation, ctx: RunContext[AgentDeps], *, sal
     """Prüfungen, die einzelne Räder betreffen; ein betroffenes Rad lässt sich notfalls streichen. Beim Retten
     (`salvaging`) zählen fehlende Motor-/Akkuangaben nicht: Sie sind eine Lücke in den Daten, kein falsches Rad."""
     return collect_problems(
-        lambda: check_sources(output, known_pages(ctx.messages), web_budget=web_budget_left(ctx.messages)),
+        lambda: check_sources(
+            output, known_pages(ctx.messages), web_budget=web_budget_left(ctx.messages), salvaging=salvaging
+        ),
         lambda: check_budget(output),
         lambda: check_spec_notes(output),
+        lambda: check_specific_models(output, web_budget=web_budget_left(ctx.messages)),
         lambda: check_electric(output, require_specs=not salvaging),
         lambda: check_frame_sizes(output, ctx.deps, ctx.messages),
     )

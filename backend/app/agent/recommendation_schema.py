@@ -42,11 +42,20 @@ class KeySpecs(BaseModel):
     brakes: str | None = Field(description='Bremsen, z. B. "hydraulische Scheibenbremsen"')
 
 
+# Sammeleinträge statt eines Modells (Beratungen 5 und 6): „Grizl (Aluminium-Varianten)“, „Grizl CF / AL (je nach
+# Ausführung)“, „Nuroad / Nuroad-ähnliche Alu-Modelle“, Marke „Allgemeine Händlerangebote“
+VAGUE_NAME = re.compile(
+    r"varianten|ähnlich|verschiedene|je nach|ausführungen|builds\b|modelle\b|händler|angebote|allgemein|\boder\b|\s/\s",
+    re.IGNORECASE,
+)
+
+
 def clean_name(name: str, *, brand: bool = False) -> str:
     """Entfernt Anmerkungen, die das Modell in Namen schreibt (Beratung 8): "Van Rysel (Decathlon)" → "Van Rysel",
     "ROSE / Backroad" → "ROSE", "Rose Bikes GmbH" → "Rose Bikes", "Checkpoint ALR (Vorjahresmodell)" → "Checkpoint ALR".
-    Sonst lehnte der Validator die Rangliste ab, weil der Name so auf keiner Seite steht."""
-    cleaned = re.sub(r"\s*[(\[][^)\]]*[)\]]", "", name)
+    Sonst lehnte der Validator die Rangliste ab, weil der Name so auf keiner Seite steht. Klammern mit Sammelangaben
+    (VAGUE_NAME) bleiben stehen, damit `check_specific_models` sie zurückweist, statt einen Familiennamen zu prüfen."""
+    cleaned = re.sub(r"\s*[(\[]([^)\]]*)[)\]]", lambda m: m[0] if VAGUE_NAME.search(m[1]) else "", name)
     if brand:
         cleaned = re.split(r"\s+/\s+|\s*/\s*(?=[A-ZÄÖÜ])", cleaned)[0]
         cleaned = re.sub(r"\s+(GmbH|AG|Inc\.?|Ltd\.?|S\.?A\.?S?\.?)$", "", cleaned, flags=re.IGNORECASE)

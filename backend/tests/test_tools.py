@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 import httpx
@@ -117,6 +118,21 @@ async def test_search_returns_results_with_prices_and_caches(tavily_key: None) -
     # Gleiche Anfrage (andere Schreibweise): aus dem Cache, ohne zweiten Aufruf
     again = await search_bikes(ctx, "  trekking e-bike bis 3500 euro ")
     assert again["results"] == result["results"] and route.call_count == 1
+
+
+@respx.mock
+async def test_shop_search_limits_domains_and_has_own_cache_entry(tavily_key: None) -> None:
+    """Beratung 9: Die allgemeine Suche lieferte kaum Euro-Preise; `shops=True` sucht nur bei deutschen Händlern."""
+    route = respx.post(f"{TAVILY_URL}/search").respond(json=SEARCH_OK)
+    ctx = await context()
+    await search_bikes(ctx, "Gravelbike Carbon 2x bis 2500 Euro")
+    general = json.loads(route.calls.last.request.content)
+    assert "include_domains" not in general and "tavily.com" in general["exclude_domains"]
+    await search_bikes(ctx, "Gravelbike Carbon 2x bis 2500 Euro", shops=True)
+    assert route.call_count == 2  # nicht aus dem Cache der allgemeinen Suche
+    shop = json.loads(route.calls.last.request.content)
+    assert "rosebikes.de" in shop["include_domains"] and "idealo.de" in shop["include_domains"]
+    assert "country" not in shop  # mit country liefert Tavily bei include_domains nichts
 
 
 @respx.mock

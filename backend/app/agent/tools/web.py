@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.agent.deps import AgentDeps
-from app.agent.tools.common import http_error_message, tool_error
+from app.agent.tools.common import http_error_message, model_family, tool_error
 from app.agent.tools.prices import prices_in_text
 from app.models import WebCacheEntry
 
@@ -30,9 +30,25 @@ SERVICE = "Websuche (Tavily)"
 # Jede Seite bleibt im Verlauf und zählt bei jeder weiteren Anfrage gegen das Token-Limit pro Minute
 SNIPPET_CHARS = 400
 PAGE_CHARS = 5000
+# Gezielter Abruf (`model`): Zeichen vor und nach jeder Nennung der Modellfamilie
+FOCUS_CHARS = 700
+TRUNCATED_NOTE = (
+    "Seite gekürzt. Steht ein Modell nicht im Text, rufe die Seite erneut mit `model` auf, dann kommen die Abschnitte "
+    "zu diesem Modell (ohne Kosten, Cache)."
+)
 MAX_RESULTS_LIMIT = 10
 # Shops und Ratgeberseiten liefern verwertbare Preise und Daten; Videos und soziale Netze selten
-EXCLUDE_DOMAINS = ["youtube.com", "facebook.com", "instagram.com", "tiktok.com", "pinterest.com", "reddit.com"]
+# tavily.com: Firmenprofile statt Fahrräder (Beratung 9: 7 von 25 Treffern)
+EXCLUDE_DOMAINS = [
+    "youtube.com", "facebook.com", "instagram.com", "tiktok.com", "pinterest.com", "reddit.com", "tavily.com",
+]  # fmt: skip
+# Händlersuche (`shops=True`): deutsche Shops, Preisvergleiche und Hersteller mit Euro-Preisen. Beratung 9: Von 25
+# Treffern der allgemeinen Suche hatten 4 einen Euro-Preis, der Rest waren Tests, US/UK-Shops und Übersichtsseiten
+SHOP_DOMAINS = [
+    "rosebikes.de", "bike24.de", "fahrrad-xxl.de", "bike-discount.de", "bike-components.de", "fahrrad.de",
+    "lucky-bike.de", "zweirad-stadler.de", "boc24.de", "bikeshop.de", "idealo.de", "decathlon.de",
+    "canyon.com", "cube.eu", "radon-bikes.de", "stevensbikes.de", "bulls.de", "ghost-bikes.com", "focus-bikes.com",
+]  # fmt: skip
 
 
 def normalize_url(url: str) -> str:
@@ -92,16 +108,21 @@ async def tavily(deps: AgentDeps, endpoint: str, body: dict[str, Any], cache_key
     return payload
 
 
-async def search_bikes(ctx: RunContext[AgentDeps], query: str, max_results: int | None = None) -> dict[str, Any]:
+async def search_bikes(
+    ctx: RunContext[AgentDeps], query: str, max_results: int | None = None, shops: bool = False
+) -> dict[str, Any]:
     """Sucht live im Web nach Fahrradmodellen, Preisen und Tests.
 
     Liefert je Treffer Titel, URL, einen Auszug und die darin erkannten Preise (`prices_eur`). Eine Suche je
     Fragestellung, auf Deutsch und mit Kategorie, Budget und Modelljahr, z. B.
-    "Trekking E-Bike bis 3500 Euro Test 2026" oder "Cube Kathmandu Hybrid Pro 750 Preis".
+    "Trekking E-Bike bis 3500 Euro Test 2026". Für Preise und Angebote `shops=true`, z. B.
+    "Cube Kathmandu Hybrid Pro 750" oder "Gravelbike Carbon 2x bis 2500 Euro": Dann kommen nur Treffer deutscher
+    Händler, Preisvergleiche und Hersteller mit Euro-Preisen.
 
     Args:
         query: Kurze Suchanfrage.
         max_results: Anzahl der Treffer (höchstens der Standard aus der Konfiguration).
+        shops: Nur bei deutschen Händlern, Preisvergleichen und Herstellern suchen (für Preise und Produktseiten).
     """
     deps = ctx.deps
     if not deps.settings.tavily_api_key:
@@ -113,8 +134,14 @@ async def search_bikes(ctx: RunContext[AgentDeps], query: str, max_results: int 
         "query": query, "max_results": limit, "search_depth": "basic", "topic": "general", "country": "germany",
         "exclude_domains": EXCLUDE_DOMAINS,
     }  # fmt: skip
+    if shops:
+        # Mit `country` liefert Tavily bei include_domains keine Treffer (live geprüft: 0 statt 5 für „Cube Nuroad
+        # C:62“); die Domains sind ohnehin deutsch
+        body["include_domains"] = SHOP_DOMAINS
+        del body["country"]
+    key = f"search:{query.strip().casefold()}|{limit}" + ("|shops" if shops else "")
     try:
-        payload = await tavily(deps, "search", body, f"search:{query.strip().casefold()}|{limit}")
+        payload = await tavily(deps, "search", body, key)
     except (httpx.HTTPError, ValueError) as exc:
         return tool_error(http_error_message(SERVICE, exc))
     results = []
@@ -128,14 +155,38 @@ async def search_bikes(ctx: RunContext[AgentDeps], query: str, max_results: int 
     return {"query": query, "results": results}
 
 
-async def read_product_page(ctx: RunContext[AgentDeps], url: str) -> dict[str, Any]:
+def focus_text(raw: str, model: str) -> str | None:
+    """Abschnitte rund um die Nennungen der Modellfamilie, höchstens PAGE_CHARS Zeichen; None ohne Nennung.
+
+    Beratung 8: Testberichte über viele Räder lieferten nur die ersten PAGE_CHARS Zeichen; das Modell las sie
+    mehrfach neu, um an die übrigen Räder zu kommen, und verbrauchte damit das Budget."""
+    if not (family := model_family(model)):
+        return None
+    spans: list[list[int]] = []
+    for match in re.finditer(rf"(?<![0-9a-zäöüß]){re.escape(family)}(?![0-9a-zäöüß])", raw, re.IGNORECASE):
+        start, end = max(0, match.start() - FOCUS_CHARS), match.end() + FOCUS_CHARS
+        if spans and start <= spans[-1][1]:
+            spans[-1][1] = end
+        else:
+            spans.append([start, end])
+    if not spans:
+        return None
+    return "\n…\n".join(raw[start:end] for start, end in spans)[:PAGE_CHARS]
+
+
+async def read_product_page(ctx: RunContext[AgentDeps], url: str, model: str | None = None) -> dict[str, Any]:
     """Lädt den bereinigten Text einer Webseite, z. B. Produktseite eines Herstellers oder Händlers oder einen Test.
 
     Nutze es für die Kandidaten der Rangliste, um Preis, Ausstattung, Gewicht und Größentabelle zu belegen.
     Rufe es für mehrere Kandidaten in derselben Runde auf.
 
+    Lange Seiten (z. B. Testberichte über viele Räder) werden gekürzt (`truncated`). Mit `model` liefert der Abruf
+    stattdessen die Abschnitte zu diesem Modell, auch weiter hinten auf der Seite.
+
     Args:
         url: Vollständige URL aus den Ergebnissen von `search_bikes` (selbst gebaute URLs werden abgelehnt).
+        model: Optional: Modellname, z. B. "Revolt Advanced 2", um auf einer langen Seite gezielt dessen Abschnitte
+            mit Preis und Ausstattung zu lesen.
     """
     deps = ctx.deps
     if not deps.settings.tavily_api_key:
@@ -151,5 +202,12 @@ async def read_product_page(ctx: RunContext[AgentDeps], url: str) -> dict[str, A
         failed = (payload.get("failed_results") or [{}])[0].get("error", "kein Inhalt")
         return tool_error(f"Seite nicht lesbar ({failed}). Einen anderen Treffer derselben Suche nehmen.")
     raw = clean_page_text(pages[0]["raw_content"])
+    if model and len(raw) > PAGE_CHARS:
+        if (focused := focus_text(raw, model)) is None:
+            return tool_error(
+                f"„{model}“ kommt auf der Seite {url} nicht vor. Belege das Modell mit einem anderen Treffer."
+            )
+        return {"url": url, "model": model, "text": focused, "prices_eur": prices_in_text(focused), "truncated": True}
     text = raw[:PAGE_CHARS]
-    return {"url": url, "text": text, "prices_eur": prices_in_text(text), "truncated": len(raw) > PAGE_CHARS}
+    result = {"url": url, "text": text, "prices_eur": prices_in_text(text), "truncated": len(raw) > PAGE_CHARS}
+    return result | {"note": TRUNCATED_NOTE} if result["truncated"] else result

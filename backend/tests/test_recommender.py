@@ -29,13 +29,13 @@ from app.agent.recommendation_schema import (
     MAX_RANKING,
     BikeCategory,
     BikeRecommendation,
-    ClarificationQuestion,
     TextAnswer,
     clean_name,
 )
 from app.agent.recommender import (
     FRAME_SIZE_CALLS,
     FREE_REPEATED_READS,
+    FREE_UNKNOWN_URLS,
     INSTRUCTIONS,
     PRICED_RANKS,
     TOOL_BUDGETS,
@@ -45,15 +45,17 @@ from app.agent.recommender import (
     check_ranking_size,
     check_sources,
     check_spec_notes,
+    check_specific_models,
     fix_source_urls,
     frame_size_budget,
     known_pages,
     match_url,
     model_on_page,
+    ranking_only,
     recommender_agent,
 )
 from app.agent.tools.frame_size import NO_MEASUREMENTS
-from app.agent.tools.web import normalize_url
+from app.agent.tools.web import focus_text, normalize_url
 from app.config import get_settings
 from app.db import SessionLocal
 from tests.conftest import auth_headers, create_user
@@ -282,8 +284,12 @@ def test_top_ranks_need_a_price() -> None:
 def test_no_price_required_once_web_budget_is_used() -> None:
     """Beratung 21: Ohne Web-Budget ließ sich der Preis nicht mehr belegen; die Forderung hielt den Lauf 15 Minuten
     in einer Schleife."""
-    pages = {normalize_url(CUBE_URL): "Cube Kathmandu Hybrid Pro 750 Variante Trekking, 3.299 €"}
-    ranking = [bike(i, price=3299 if i != 2 else None) for i in range(1, MAX_RANKING + 1)]
+    pages = {
+        normalize_url(CUBE_URL): "Cube Kathmandu Hybrid Pro 750 Variante Trekking, 3.299 €",
+        normalize_url(KTM_URL): "KTM Macina Style XL Trekking mit Bosch-Motor und Riemenantrieb",  # ohne Preis
+    }
+    ktm = bike(2, url=KTM_URL, price=None, brand="KTM", model="Macina Style XL")
+    ranking = [ktm if i == 2 else bike(i) for i in range(1, MAX_RANKING + 1)]
     check_sources(BikeRecommendation.model_validate(recommendation(*ranking)), pages, web_budget=False)
 
 
@@ -372,25 +378,82 @@ async def test_web_tools_hidden_after_budget(monkeypatch: pytest.MonkeyPatch) ->
     assert len(result.output.ranking) == 1 and not retry_prompts(result.all_messages())
 
 
-async def test_question_rejected_when_use_case_and_budget_known() -> None:
-    question = ("ask_user", {"question": "Wie groß bist Du?", "missing_fields": ["height_cm"]})
-    with recommender_agent.override(model=scripted_model(question, question)):
+@pytest.mark.parametrize(
+    ("criteria", "offered"),
+    [
+        ({"use_case": "Kinder transportieren", "budget_eur": 6000}, False),
+        ({"use_case": "Kinder transportieren"}, True),
+        ({"budget_eur": 6000}, True),
+    ],
+)
+async def test_question_offered_only_when_use_case_or_budget_missing(criteria: dict[str, Any], offered: bool) -> None:
+    """Beratung 4: Rückfrage trotz bekanntem Einsatzzweck und Budget, abgelehnt, eine Modellanfrage verschenkt."""
+    outputs: list[set[str]] = []
+
+    def model(messages: list[Any], info: Any) -> ModelResponse:
+        outputs.append({tool.name for tool in info.output_tools})
+        return ModelResponse(parts=[ToolCallPart("answer_user", {"message": "Gern."})])
+
+    with recommender_agent.override(model=FunctionModel(model)):
         async with httpx.AsyncClient() as http:
             deps = AgentDeps(
-                settings=get_settings(), http=http, session_factory=SessionLocal, user_name="Ute",
-                criteria={"use_case": "Kinder transportieren", "budget_eur": 6000},
-            )  # fmt: skip
-            async with recommender_agent.run_stream_events("E-Lastenrad bis 6000 €", deps=deps) as events:
-                result = [e async for e in events][-1].result
-    retries = [
-        str(part.content)
-        for message in result.all_messages()
-        if isinstance(message, ModelRequest)
-        for part in message.parts
-        if getattr(part, "tool_name", None) == "ask_user" and getattr(part, "outcome", None) == "retried"
+                settings=get_settings(), http=http, session_factory=SessionLocal, user_name="Ute", criteria=criteria
+            )
+            await recommender_agent.run("E-Lastenrad", deps=deps)
+    assert ("ask_user" in outputs[0]) is offered and "answer_user" in outputs[0]
+
+
+@pytest.mark.parametrize(
+    ("brand", "model"),
+    [
+        ("Canyon", "Grizl (Aluminium-Varianten)"),
+        ("Canyon", "Grizl CF / AL (je nach Ausführung)"),
+        ("Cube", "Nuroad / Nuroad-ähnliche Alu-Modelle"),
+        ("Allgemeine Händlerangebote", "verschiedene Alu-Gravel-Modelle"),
+        ("Specialized", "Diverge E5 (Alu-Builds)"),
+    ],
+)
+def test_collective_entries_are_rejected(brand: str, model: str) -> None:
+    """Beratungen 5 und 6: Sammeleinträge statt konkreter Modelle, erst bemängelt, als nichts mehr nachzusuchen war."""
+    rec = BikeRecommendation.model_validate(recommendation(bike(1), bike(2, brand=brand, model=model)))
+    with pytest.raises(ModelRetry, match="Platz 2") as exc:
+        check_specific_models(rec)
+    assert "search_bikes" in str(exc.value)
+    with pytest.raises(ModelRetry, match="streiche den Platz"):
+        check_specific_models(rec, web_budget=False)
+
+
+def test_concrete_models_pass_collective_check() -> None:
+    rec = BikeRecommendation.model_validate(
+        recommendation(bike(1, brand="Van Rysel", model="GRVL AF (Shimano GRX 2x12 Variante)"), bike(2))
+    )
+    assert rec.ranking[0].model == "GRVL AF"  # einzelne Variante: Anmerkung, wird entfernt
+    check_specific_models(rec)
+
+
+def outputs_ctx(messages: list[Any], **criteria: Any) -> Any:
+    settings = SimpleNamespace(tavily_api_key="tvly-test")
+    deps = SimpleNamespace(ranking_due=True, settings=settings, criteria=criteria)
+    return SimpleNamespace(messages=messages, deps=deps, retry=0, max_retries=3)
+
+
+def test_only_ranking_offered_when_use_case_and_budget_known() -> None:
+    """Beratungen 5 und 6: Ohne `ask_user` fragte das Modell per `answer_user` nach; jede Ablehnung kostete eine
+    Korrektur der Rangliste. Fällt die Websuche aus, bleibt `answer_user`, um das zu sagen."""
+    start = [ModelRequest(parts=[UserPromptPart("Gravelbike bis 2500 €")])]
+    assert ranking_only(outputs_ctx(start, use_case="Gravel", budget_eur=2500))
+    assert not ranking_only(outputs_ctx(start, use_case="Gravel"))
+    failed = {"error": "Websuche (Tavily) ist nicht erreichbar: ConnectError"}
+    calls = [ToolCallPart("search_bikes", {"query": "x"}, tool_call_id=f"s{i}") for i in range(2)]
+    outage = [
+        *start,
+        ModelResponse(parts=calls),
+        ModelRequest(parts=[ToolReturnPart("search_bikes", failed, tool_call_id=c.tool_call_id) for c in calls]),
     ]
-    assert len(retries) == 1 and "Einsatzzweck („Kinder transportieren“) und Budget (6000 €)" in retries[0]
-    assert isinstance(result.output, ClarificationQuestion)  # beim zweiten Versuch gilt sie
+    assert not ranking_only(outputs_ctx(outage, use_case="Gravel", budget_eur=2500))
+    last = outputs_ctx(start, use_case="Gravel", budget_eur=2500)
+    last.retry = 3
+    assert ranking_only(last)  # Beratung 8: auch im letzten Versuch keine Rückfrage per `answer_user`
 
 
 def test_brand_and_model_are_cleaned() -> None:
@@ -793,9 +856,63 @@ async def test_repeated_page_read_is_refused_and_does_not_use_budget(
         for part in message.parts
         if isinstance(part, ToolReturnPart) and part.tool_name == "read_product_page"
     ]
-    assert "schon gelesen" in returns[1]["error"]
+    assert "schon so gelesen" in returns[1]["error"]
     assert returns[2]["url"] == KTM_URL  # trotz Budget 2: die Wiederholung zählt nicht
     assert tavily.routes[1].call_count == 2
+
+
+def test_invented_urls_count_only_after_free_ones() -> None:
+    """Beratung 7: Sechs abgelehnte, selbst gebaute URLs zählten, nach vier gelesenen Seiten war das Budget weg."""
+    search = ToolCallPart("search_bikes", {"query": "x"}, tool_call_id="s")
+    invented = [
+        ToolCallPart("read_product_page", {"url": f"https://erfunden.example/rad-{i}"}, tool_call_id=f"r{i}")
+        for i in range(FREE_UNKNOWN_URLS + 2)
+    ]
+    messages: list[Any] = [
+        ModelRequest(parts=[UserPromptPart("Gravelbike")]),
+        ModelResponse(parts=[search]),
+        ModelRequest(parts=[ToolReturnPart("search_bikes", SEARCH_OK, tool_call_id="s")]),
+        ModelResponse(parts=invented),
+    ]
+    assert FREE_UNKNOWN_URLS >= 8
+    assert calls_in_run(messages, "read_product_page") == 2
+
+
+def test_visible_price_required_even_without_web_budget() -> None:
+    """Beratung 7: Mit aufgebrauchtem Budget setzte das Modell auch belegte Preise auf null."""
+    priced = {normalize_url(CUBE_URL): "Cube Kathmandu Hybrid Pro 750 Trekking, jetzt 3.299,00 €"}
+    rec = BikeRecommendation.model_validate(recommendation(bike(1, price=None)))
+    with pytest.raises(ModelRetry, match="nennt beim Modell 3299 €"):
+        check_sources(rec, priced, web_budget=False)
+    check_sources(rec, priced, web_budget=False, salvaging=True)  # beim Retten bleibt das Rad
+    check_sources(rec, {normalize_url(CUBE_URL): "Cube Kathmandu Hybrid Pro 750 Trekking"}, web_budget=False)
+
+
+async def test_long_page_can_be_read_for_one_model(tavily: respx.MockRouter) -> None:
+    """Beratung 8: Ein Testbericht war nach 5000 Zeichen gekürzt; das Modell las ihn immer wieder neu, um an die
+    übrigen Räder zu kommen. Mit `model` kommen dessen Abschnitte, und das ist keine Wiederholung."""
+    filler = "Allgemeines zum Gravelbike-Fahren und zur Ausstattung. " * 120
+    raw = f"Cube Kathmandu Hybrid Pro 750 für 3.299 €. {filler} Giant Revolt Advanced 2 kostet 1.699 €. {filler}"
+    tavily.routes[1].respond(json={"results": [{"url": CUBE_URL, "raw_content": raw}], "failed_results": []})
+    focused = ("read_product_page", {"url": CUBE_URL, "model": "Revolt Advanced 2"})
+    steps = (SEARCH, ("read_product_page", {"url": CUBE_URL}), focused, focused, RESEARCH, FRAME)
+    result = await run(*steps, ("final_recommendation", recommendation()))
+    returns = [
+        part.content
+        for message in result.all_messages()
+        if isinstance(message, ModelRequest)
+        for part in message.parts
+        if isinstance(part, ToolReturnPart) and part.tool_name == "read_product_page"
+    ]
+    assert returns[0]["truncated"] and "`model`" in returns[0]["note"] and "Revolt" not in returns[0]["text"]
+    assert "Revolt Advanced 2 kostet 1.699 €" in returns[1]["text"] and 1699 in returns[1]["prices_eur"]
+    assert "schon so gelesen" in returns[2]["error"]
+    assert "Revolt" in known_pages(result.all_messages())[normalize_url(CUBE_URL)]  # Validator sieht den Abschnitt
+
+
+def test_focus_text_without_mention() -> None:
+    assert focus_text("Cube Nuroad C:62 für 2.000 €", "Revolt 0") is None
+    assert focus_text("Cube Nuroad C:62 für 2.000 €", "Nuroad C:62") == "Cube Nuroad C:62 für 2.000 €"
 
 
 def test_repeated_reads_count_after_free_ones() -> None:
