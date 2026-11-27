@@ -1,0 +1,163 @@
+{
+  "summary": {
+    "runs": 1,
+    "passed_runs": 1,
+    "checks_passed": "8/8",
+    "mean_seconds": 172.6,
+    "mean_web_calls": 14,
+    "mean_model_requests": 12,
+    "mean_input_tokens": 138231,
+    "mean_output_tokens": 7274,
+    "mean_retries": 0,
+    "total_cost_usd": 0.026
+  },
+  "runs": [
+    {
+      "case": "pendler-ebike",
+      "seconds": 172.6,
+      "output": "final_recommendation",
+      "error": null,
+      "tool_calls": {
+        "search_bikes": 9,
+        "research_knowledge": 1,
+        "read_product_page": 5,
+        "recommend_frame_size": 3
+      },
+      "web_calls": 14,
+      "model_requests": 12,
+      "input_tokens": 138231,
+      "output_tokens": 7274,
+      "cost_usd": 0.026,
+      "retries": 0,
+      "bikes": 3,
+      "checks": {
+        "Ausgabetyp": true,
+        "Rangliste": true,
+        "1-5 Räder": true,
+        "Quellen belegt": true,
+        "Kategorie": true,
+        "Budget": true,
+        "mit Motor": true,
+        "Rahmengröße": true
+      },
+      "result": {
+        "title": "Trekking‑E‑Bike bis 3.500 € für tägliches Pendeln (15 km, teils Schotter)",
+        "summary": "Sie suchten ein Trekking‑E‑Bike für tägliches Pendeln (15 km pro Strecke), teils auf Schotter, Budget bis 3.500 €, Körpergröße 175 cm / Schrittlänge 82 cm. Platz 1 ist das Victoria Tresalo 6 (RRP €3.499) weil es als klassisches Trekking‑E‑Bike mit kräftigem Motor und ausreichend Akku für Pendelstrecken ausgelegt ist; Giant Talon E+ EX Gen2 landet knapp dahinter als leichtes, wendiges SUV‑E‑Bike zum guten Preis. Canyon Pathlite:ON ist drittens als vielseitiges Hybrid/Trekking‑E‑Bike interessant (Preis für Neugerät vor Ort prüfen).",
+        "requirements": {
+          "use_case": "tägliches Pendeln, 15 km pro Strecke, teils Schotter",
+          "category": "trekking",
+          "electric": true,
+          "budget_eur": 3500.0,
+          "height_cm": 175,
+          "inseam_cm": 82,
+          "other_wishes": []
+        },
+        "ranking": [
+          {
+            "rank": 1,
+            "brand": "Victoria",
+            "model": "TRESALO 6",
+            "model_year": 2026,
+            "category": "trekking",
+            "price_eur": 3499.0,
+            "price_source_url": "https://2bx.bike/bikes/victoria-tresalo-6-trapeze-2026",
+            "key_specs": {
+              "weight_kg": null,
+              "drivetrain": null,
+              "motor": "Bosch, 75 Nm (einträge auf Händlerseiten)",
+              "battery_wh": 545,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": "L (54 cm)",
+            "match_score": 92,
+            "why_fits": "Typisches Trekking‑Setup, kräftiger Motor/angemessene Akkukapazität und als Komplettpaket (Gepäckträger, Schutzbleche, Licht) auf Pendeln und Schotterwege ausgelegt.",
+            "pros": [
+              "Trekking‑Ausstattung (Gepäckträger, Schutzbleche, Licht) — alltagstauglich",
+              "Kräftiger Motor (laut Händlereinträgen ~75 Nm) und ~545 Wh Akku — gute Reichweite für 30 km/Tag",
+              "Modell in Ihrem Budget (RRP €3.499)"
+            ],
+            "cons": [
+              "RRP liegt am oberen Limit Ihres Budgets (genau €3.499)",
+              "Einige Händlerlisten zeigen unterschiedliche Motor/Akku‑Konfigurationen — beim Händler Ausstattung prüfen",
+              "Gewicht und genaue Komponenten variieren je Händler (prüfen)"
+            ]
+          },
+          {
+            "rank": 2,
+            "brand": "Giant",
+            "model": "Talon E+ EX | Gen2",
+            "model_year": 2026,
+            "category": "trekking",
+            "price_eur": 2749.0,
+            "price_source_url": "https://www.giant-bicycles.com/de/talon-eplus-ex---gen2",
+            "key_specs": {
+              "weight_kg": 21.7,
+              "drivetrain": null,
+              "motor": "Yamaha SyncDrive Sport 2",
+              "battery_wh": 430,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": "L (54 cm)",
+            "match_score": 85,
+            "why_fits": "Leichtes, günstiges E‑Trekking/SUV‑Modell mit Ausstattung für den Alltag (EX‑Version mit Schutzblechen/Gepäckträger möglich) und klar unter Ihrem Budget.",
+            "pros": [
+              "Sehr gutes Preis‑Leistungs‑Verhältnis (€2.749 laut Hersteller)",
+              "Niedriges Gesamtgewicht (~21,7 kg) macht das Handling auf Schotter komfortabler",
+              "EX‑Version ist für Alltag/Komfort (Gepäckträger, Schutzbleche) vorbereitet"
+            ],
+            "cons": [
+              "Akku nur 430 Wh (laut Hersteller) — bei 30 km/Tag, bergigen Strecken oder häufigem Einsatz kann die Reichweite knapp werden",
+              "eher SUV/Hardtail‑Geometrie — weniger komfortorientiert als klassische Trekkingrahmen"
+            ]
+          },
+          {
+            "rank": 3,
+            "brand": "Canyon",
+            "model": "Pathlite:ON",
+            "model_year": null,
+            "category": "trekking",
+            "price_eur": null,
+            "price_source_url": "https://cleverbikes.de/collections/canyon-pathlite-on-gebraucht",
+            "key_specs": {
+              "weight_kg": null,
+              "drivetrain": null,
+              "motor": "Bosch (Einträge: Performance Line, ~85 Nm)",
+              "battery_wh": 750,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": "L (54 cm)",
+            "match_score": 80,
+            "why_fits": "Pathlite:ON ist ein sehr alltags‑und tourentaugliches Hybrid/Trekking‑E‑Bike mit großen Akkus und komfortabler Geometrie — gut für längere Pendelstrecken oder mehr Range auf Schotter.",
+            "pros": [
+              "Große Akkuauswahl bis 750 Wh (großer Vorteil für 30 km täglich)",
+              "Klar als Hybrid/Trekking ausgelegt: oft mit Gepäckträger, Licht und guten Reifenoptionen",
+              "Hybride Geometrie für Komfort auf längeren Abschnitten und Schotter"
+            ],
+            "cons": [
+              "Neupreis variiert und war auf den gelesenen Händlerseiten nicht eindeutig — vor Ort prüfen (gebrauchtangebote ab ~€2.199 vorhanden)",
+              "Manche Versionen sind größer/teurer als Ihr Budget — Preis prüfen"
+            ]
+          }
+        ],
+        "buying_tips": [
+          "Machen Sie eine Probefahrt mit der geplanten Beladung (Gepäckträger, ggf. Kindersitz).",
+          "Achten Sie auf Akkukapazität: 430 Wh kann für 30 km/Tag knapp sein — bevorzugen Sie ≥500 Wh wenn möglich.",
+          "Prüfen Sie Reifenbreite (gerade 40–50 mm ist für Schotter sinnvoll) und Reifentyp (mehr Profil für Schotter).",
+          "Vergleichen Sie Händlerangebote und Vorjahresmodelle — oft gute Rabatte, wenn Ausstattung passt.",
+          "Lassen Sie die Rahmengrößenempfehlung beim Händler bestätigen (L / 54 cm wurde hier empfohlen)."
+        ],
+        "sources": [
+          "https://www.giant-bicycles.com/de/talon-eplus-ex---gen2",
+          "https://2bx.bike/bikes/victoria-tresalo-6-trapeze-2026",
+          "https://cleverbikes.de/collections/canyon-pathlite-on-gebraucht",
+          "https://www.radfahren.de/test-teile/e-trekkingraeder-2026-test",
+          "Ergebnis der Wissensbasis: \"Die richtige Rahmengröße\" und Trekking‑Kaufhinweise"
+        ]
+      },
+      "passed": true
+    }
+  ]
+}

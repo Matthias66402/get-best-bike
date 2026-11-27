@@ -1,0 +1,629 @@
+{
+  "summary": {
+    "runs": 5,
+    "passed_runs": 5,
+    "checks_passed": "33/33",
+    "mean_seconds": 148.36,
+    "mean_web_calls": 10.4,
+    "mean_model_requests": 8.4,
+    "mean_input_tokens": 109301,
+    "mean_output_tokens": 7034,
+    "mean_retries": 1.2,
+    "total_cost_usd": 0.107
+  },
+  "runs": [
+    {
+      "case": "pendler-ebike",
+      "seconds": 236.3,
+      "output": "final_recommendation",
+      "error": null,
+      "tool_calls": {
+        "search_bikes": 7,
+        "research_knowledge": 1,
+        "read_product_page": 4,
+        "recommend_frame_size": 3
+      },
+      "web_calls": 11,
+      "model_requests": 10,
+      "input_tokens": 169074,
+      "output_tokens": 12064,
+      "cost_usd": 0.0357,
+      "retries": 3,
+      "bikes": 3,
+      "checks": {
+        "Ausgabetyp": true,
+        "Rangliste": true,
+        "1-5 Räder": true,
+        "Quellen belegt": true,
+        "Kategorie": true,
+        "Budget": true,
+        "mit Motor": true,
+        "Rahmengröße": true
+      },
+      "result": {
+        "title": "Trekking‑E‑Bike bis 3.500 € – Pendeln 15 km, teils Schotter",
+        "summary": "Sie suchten ein Trekking‑E‑Bike fürs tägliche Pendeln (15 km pro Strecke), teils auf Schotter, Budget 3.500 €. Platz 1 ist ein frontgefedertes Touren‑E‑Bike mit ausreichender Akku‑Größe und robustem Fahrwerk; Platz 2 und 3 bieten leichtere bzw. komfortorientierte Alternativen im Budget.",
+        "requirements": {
+          "use_case": "täglich 15 km pendeln, teils Schotter",
+          "category": "trekking",
+          "electric": true,
+          "budget_eur": 3500.0,
+          "height_cm": 175,
+          "inseam_cm": 82,
+          "other_wishes": [
+            "wartungsarme Lösungen (Riemen) neutral",
+            "Tiefeinsteiger nicht gewünscht"
+          ]
+        },
+        "ranking": [
+          {
+            "rank": 1,
+            "brand": "Giant",
+            "model": "Talon E+ EX Gen2",
+            "model_year": 2026,
+            "category": "trekking",
+            "price_eur": 2749.0,
+            "price_source_url": "https://www.radfahren.de/test-teile/e-trekkingraeder-2026-test",
+            "key_specs": {
+              "weight_kg": 24.4,
+              "drivetrain": null,
+              "motor": "Giant SyncDrive (Yamaha)",
+              "battery_wh": 430,
+              "suspension": "Federgabel (Front)",
+              "brakes": null
+            },
+            "frame_size": "L (54 cm)",
+            "match_score": 93,
+            "why_fits": "Günstiges, frontgefedertes Trekking/Travel‑E‑Bike mit 430 Wh Akku – gute Mischung aus Kontrolle auf Schotter und Alltagstauglichkeit. Preis liegt deutlich unter Ihrem Budget.",
+            "pros": [
+              "Sehr gutes Preis‑Leistungs‑Verhältnis (2.749 €).",
+              "Frontfederung für mehr Komfort und Kontrolle auf Schotter.",
+              "430 Wh Akku reicht üblicherweise für tägliche 15‑km‑Strecken pro Richtung ohne extremes Assistenzniveau."
+            ],
+            "cons": [
+              "430 Wh kann bei häufiger hoher Unterstützung oder bei viel Gepäck an die Grenzen kommen.",
+              "Relativ hohes Gewicht (~24,4 kg) im Vergleich zu leichten Urban‑Bikes.",
+              "Eher sportlicher/MTB‑geprägter Charakter, weniger aufrecht als manche Trekking‑Modelle."
+            ]
+          },
+          {
+            "rank": 2,
+            "brand": "BZEN",
+            "model": "Milano",
+            "model_year": 2026,
+            "category": "city",
+            "price_eur": 2990.0,
+            "price_source_url": "https://bzenbikes.com/collections/milano",
+            "key_specs": {
+              "weight_kg": 14.5,
+              "drivetrain": "Gates Carbon Belt Drive",
+              "motor": null,
+              "battery_wh": 360,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": "L (54 cm)",
+            "match_score": 78,
+            "why_fits": "Extrem leichtes, wartungsarmes Pendler‑E‑Bike mit Gates‑Riemen und geringer Masse — sehr agil für Stadt und leichten Schotter/Glattwege.",
+            "pros": [
+              "Sehr niedriges Gewicht (ca. 14,5 kg) – wendig und einfach zu handhaben.",
+              "Gates Carbon Riemen sorgt für wenig Wartung.",
+              "Gute Auslieferungsausstattung (Licht etc.)."
+            ],
+            "cons": [
+              "360 Wh Akku ist relativ klein für 30 km Tagesstrecke bei viel Unterstützung.",
+              "Keine Federung – auf sehr grobem Schotter weniger komfortabel.",
+              "Eher city‑orientiert; ggf. weniger Gepäckoptionen für längere Touren."
+            ]
+          },
+          {
+            "rank": 3,
+            "brand": "Corratec",
+            "model": "E‑Power Easy Comfort",
+            "model_year": 2026,
+            "category": "city",
+            "price_eur": null,
+            "price_source_url": "https://www.corratec.com/en/E-Bikes/Leisure-City/E-Trekking/E-Power-Easy-Comfort.html",
+            "key_specs": {
+              "weight_kg": null,
+              "drivetrain": "Shimano CUES 10‑speed",
+              "motor": "Bosch Hub Line (Nabenmotor, hinten)",
+              "battery_wh": 360,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": "L (54 cm)",
+            "match_score": 88,
+            "why_fits": "Komfortorientiertes Modell mit 55 mm Reifen und Rack, gut für Pendeln und schlechte Straßenbeläge; wartungsarme Hub‑Antriebslösung.",
+            "pros": [
+              "55 mm Reifen bieten mehr Komfort und Sicherheit auf Schotter/Kopfstein.",
+              "Bosch Hub Line Antrieb ist zuverlässig und wartungsarm; 360 Wh Akku ist für moderate Pendelstrecken ausgelegt.",
+              "Komplette Alltagsausstattung (Licht, Gepäckträger)."
+            ],
+            "cons": [
+              "Auf der Produktseite ist kein Preis angegeben (deshalb Preis hier null) — Händlerpreise variieren, bitte prüfen.",
+              "360 Wh Akku ist für intensive Unterstützung oder sehr bergige Strecken knapp.",
+              "Gewicht nicht angegeben — bei Interesse vor Ort wiegen bzw. Händlerangabe prüfen."
+            ]
+          }
+        ],
+        "buying_tips": [
+          "Probefahrt auf Ihrer Pendelstrecke (inkl. Schotterabschnitten) und mit voller Beladung (Packtaschen).",
+          "Für 30 km/Tag: lieber ≥400 Wh Akku oder Range‑Extender; 360 Wh reicht bei moderater Unterstützung, ist aber eher knapp bei starker Unterstützung.",
+          "Bei häufigem Schotter: Frontfederung oder breite, pannensichere Reifen (40–55 mm) wählen.",
+          "Achten Sie auf herausnehmbaren Akku, passende Rahmengrößen (L empfohlen bei 175/82) und die Montageoptionen für Schutzbleche und Gepäckträger."
+        ],
+        "sources": [
+          "https://www.radfahren.de/test-teile/e-trekkingraeder-2026-test",
+          "https://bzenbikes.com/collections/milano",
+          "https://www.corratec.com/en/E-Bikes/Leisure-City/E-Trekking/E-Power-Easy-Comfort.html"
+        ]
+      },
+      "passed": true
+    },
+    {
+      "case": "gravel-ohne-motor",
+      "seconds": 151.5,
+      "output": "final_recommendation",
+      "error": null,
+      "tool_calls": {
+        "search_bikes": 10,
+        "research_knowledge": 3,
+        "read_product_page": 4,
+        "recommend_frame_size": 4
+      },
+      "web_calls": 14,
+      "model_requests": 10,
+      "input_tokens": 111983,
+      "output_tokens": 6153,
+      "cost_usd": 0.0202,
+      "retries": 1,
+      "bikes": 3,
+      "checks": {
+        "Ausgabetyp": true,
+        "Rangliste": true,
+        "1-5 Räder": true,
+        "Quellen belegt": true,
+        "Kategorie": true,
+        "Budget": true,
+        "ohne Motor": true,
+        "Rahmengröße": true
+      },
+      "result": {
+        "title": "Gravelbike (ohne Motor) bis 2.000 € — Feierabend & gelegentliches Bikepacking",
+        "summary": "Gesucht war ein nicht‑motorisiertes Gravelbike bis 2.000 € für kurze Feierabendrunden und gelegentliche Bikepacking‑Touren. Platz 1 (Canyon Grizl 7) liegt vorn, weil es Vielseitigkeit, Reifenfreiheit und Gepäckaufnahmen kombiniert — ideal für beides. Platz 2 (Cube Nuroad C:62 One) ist das leichteste und schnellste Rad im Test, Platz 3 (Radon Regard AL 10.0) ein preis‑leichter Allrounder mit Gepäckaufnahmen.",
+        "requirements": {
+          "use_case": "Feierabendrunden und gelegentliches Bikepacking",
+          "category": "gravel",
+          "electric": false,
+          "budget_eur": 2000.0,
+          "height_cm": 182,
+          "inseam_cm": null,
+          "other_wishes": [
+            "Aufnahmen für Gepäckträger / Bikepacking",
+            "robuste Ausstattung für Schotter",
+            "kein Motor"
+          ]
+        },
+        "ranking": [
+          {
+            "rank": 1,
+            "brand": "Canyon",
+            "model": "Grizl 7",
+            "model_year": null,
+            "category": "gravel",
+            "price_eur": null,
+            "price_source_url": "https://www.tour-magazin.de/rennraeder/gravel-bike/die-besten-ihrer-liga-fuenf-gravelbikes-bis-2000-euro",
+            "key_specs": {
+              "weight_kg": 10.6,
+              "drivetrain": null,
+              "motor": null,
+              "battery_wh": null,
+              "suspension": "starr",
+              "brakes": "hydraulische Scheibenbremsen"
+            },
+            "frame_size": "L (57 cm)",
+            "match_score": 92,
+            "why_fits": "Gute Kombination aus Komfort, Ausstattung und praktischen Befestigungen für Taschen/Gepäck — dadurch ideal für Feierabendrunden und gelegentliches Bikepacking.",
+            "pros": [
+              "Aufnahmen für Gepäckträger und Taschen (gut für Bikepacking)",
+              "ausgewogenes, komfortables Fahrverhalten",
+              "große Auswahl an Rahmengrößen"
+            ],
+            "cons": [
+              "relativ hohes Gesamtgewicht im Vergleich zu Testsiegern",
+              "keine explizite Vorbereitung für Licht/Dynamo laut Quelle"
+            ]
+          },
+          {
+            "rank": 2,
+            "brand": "Cube",
+            "model": "Nuroad C:62 One",
+            "model_year": null,
+            "category": "gravel",
+            "price_eur": 1999.0,
+            "price_source_url": "https://www.tour-magazin.de/rennraeder/gravel-bike/die-besten-ihrer-liga-fuenf-gravelbikes-bis-2000-euro",
+            "key_specs": {
+              "weight_kg": 9.3,
+              "drivetrain": "1x12",
+              "motor": null,
+              "battery_wh": null,
+              "suspension": "starr",
+              "brakes": "hydraulische Scheibenbremsen"
+            },
+            "frame_size": "L (57 cm)",
+            "match_score": 88,
+            "why_fits": "Testsieger: sehr leicht und mit sportlichem, straßenorientiertem Fahrgefühl — toll für schnelle Feierabendrunden und längere Etappen. Eignet sich für Bikepacking, wenn du kein schweres Gepäck planst.",
+            "pros": [
+              "sehr geringes Gewicht (9,3 kg)",
+              "hochwertige Ausstattung für den Preis",
+              "hervorragendes Preis‑Leistungs‑Verhältnis (Testsieg)"
+            ],
+            "cons": [
+              "eingeschränkte Rahmengrößenwahl (nur fünf Größen)",
+              "kürzere Sattelstütze in der Serienausstattung; weniger explizite Gepäckträger‑Aufnahmen als Grizl",
+              "1x12 kann größere Gangsprünge haben (laut Test)"
+            ]
+          },
+          {
+            "rank": 3,
+            "brand": "Radon",
+            "model": "Regard AL 10.0",
+            "model_year": null,
+            "category": "gravel",
+            "price_eur": null,
+            "price_source_url": "https://www.tour-magazin.de/rennraeder/gravel-bike/die-besten-ihrer-liga-fuenf-gravelbikes-bis-2000-euro",
+            "key_specs": {
+              "weight_kg": 9.8,
+              "drivetrain": "1x12",
+              "motor": null,
+              "battery_wh": null,
+              "suspension": "starr",
+              "brakes": "hydraulische Scheibenbremsen"
+            },
+            "frame_size": "L (57 cm)",
+            "match_score": 85,
+            "why_fits": "Leichtes Aluminium‑Bike mit Gepäckaufnahmen und agiler Geometrie — guter Kompromiss zwischen Touren‑ und sportlicher Nutzung.",
+            "pros": [
+              "relativ leicht und agil",
+              "Aufnahmen für Gepäckträger/Taschen (gut für Bikepacking)",
+              "gutes Preis‑Leistungs‑Verhältnis im Testfeld"
+            ],
+            "cons": [
+              "weniger Federungskomfort als die komfortorientierten Modelle",
+              "nur fünf Rahmengrößen in der getesteten Version (eingeschränkte Auswahl)"
+            ]
+          }
+        ],
+        "buying_tips": [
+          "Mach unbedingt eine Probefahrt (Geometrie und Sitzposition sind sehr individuell).",
+          "Prüfe Befestigungsaufnahmen für Gepäckträger und die maximale Reifenfreiheit (mind. 45–50 mm für Bikepacking und Schotter).",
+          "Achte auf die Länge der Sattelstütze (Cube Nuroad hat laut Test kurze Sattelstütze in Serie).",
+          "Zieh Vorjahresmodelle in Betracht — oft deutlich günstiger bei ähnlicher Ausstattung.",
+          "Bei Zwischen zwei Rahmengrößen: sportlicher (größer) vs. laufruhiger/komfortabler (größer) — wähle nach Sitzpräferenz."
+        ],
+        "sources": [
+          "https://www.tour-magazin.de/rennraeder/gravel-bike/die-besten-ihrer-liga-fuenf-gravelbikes-bis-2000-euro",
+          "Giant Revolt Produktseite: https://www.giant-bicycles.com/global/revolt",
+          "Wissensbasis: Fahrradkategorien im Überblick; Schaltung, Antrieb und Bremsen; Die richtige Rahmengröße"
+        ]
+      },
+      "passed": true
+    },
+    {
+      "case": "kinderrad",
+      "seconds": 133.4,
+      "output": "final_recommendation",
+      "error": null,
+      "tool_calls": {
+        "search_bikes": 7,
+        "research_knowledge": 1,
+        "read_product_page": 3,
+        "recommend_frame_size": 1
+      },
+      "web_calls": 10,
+      "model_requests": 9,
+      "input_tokens": 71024,
+      "output_tokens": 6389,
+      "cost_usd": 0.0188,
+      "retries": 0,
+      "bikes": 3,
+      "checks": {
+        "Ausgabetyp": true,
+        "Rangliste": true,
+        "1-5 Räder": true,
+        "Quellen belegt": true,
+        "Kategorie": true,
+        "Budget": true,
+        "ohne Motor": true,
+        "Rahmengröße": true
+      },
+      "result": {
+        "title": "Leichtes Kinderrad (20\") bis 500 €",
+        "summary": "Gesucht wurde ein leichtes Kinderrad für Ihre Tochter (118 cm) bis maximal 500 €. Platz 1 ist das preiswerte Decathlon-City-Bike (D4 Rock) wegen sehr gutem Preis‑Gewicht‑Verhältnis; als Alternative empfehle ich das sehr leichte Woom GO 4 (bei Händlern ~386 €) und als solides, im Test bewährtes Modell das Puky Skyride 20.",
+        "requirements": {
+          "use_case": "leichtes Kinderrad für Tochter, 118 cm Körpergröße",
+          "category": "kids",
+          "electric": false,
+          "budget_eur": 500.0,
+          "height_cm": 118,
+          "inseam_cm": null,
+          "other_wishes": [
+            "leicht"
+          ]
+        },
+        "ranking": [
+          {
+            "rank": 1,
+            "brand": "Decathlon",
+            "model": "City Bike 20 Zoll D4 Rock",
+            "model_year": null,
+            "category": "kids",
+            "price_eur": 270.0,
+            "price_source_url": "https://www.adac.de/rund-ums-fahrzeug/zweirad/fahrrad-ebike-pedelec/tests/kinderfahrrad-test",
+            "key_specs": {
+              "weight_kg": null,
+              "drivetrain": null,
+              "motor": null,
+              "battery_wh": null,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": "20\"",
+            "match_score": 95,
+            "why_fits": "Laut ADAC der Preisbrecher im Test: 20\"-Rad, sehr günstiger Preis (270 €) und gutes ADAC‑Urteil („gut“). Passt zur Körpergröße 118 cm und bleibt weit unter dem Budget.",
+            "pros": [
+              "Sehr günstiger Preis (ADAC: 270 €), viel Budgetspielraum für Zubehör",
+              "Im ADAC‑Test mit gutem Fahrverhalten und gutem Licht (Standlicht vorn/hinten)",
+              "Gute Wahl, wenn Preis/Praxis wichtiger als extrem geringes Gewicht sind"
+            ],
+            "cons": [
+              "Wahrscheinlich einfache Komponenten im Vergleich zu Premium‑Kinderrädern",
+              "Eventuell etwas schwerer als spezialisierte Leichtmodelle (keine genaue Gewichtszahl auf der Quelle)"
+            ]
+          },
+          {
+            "rank": 2,
+            "brand": "woom",
+            "model": "GO 4",
+            "model_year": null,
+            "category": "kids",
+            "price_eur": 386.0,
+            "price_source_url": "https://www.idealo.de/preisvergleich/ProductCategory/4072F8363377.html",
+            "key_specs": {
+              "weight_kg": 8.5,
+              "drivetrain": "7‑Gang Kettenschaltung",
+              "motor": null,
+              "battery_wh": null,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": "20\"",
+            "match_score": 90,
+            "why_fits": "Sehr leichtes 20\"‑Rad (ADAC nennt ca. 8,5 kg) und kindgerechte Geometrie – daher sehr einfach zu handhaben für ein Kind mit 118 cm Körpergröße.",
+            "pros": [
+              "Sehr geringes Gewicht (laut ADAC ~8,5 kg) – deutlich leichteres Handling für Ihr Kind",
+              "Kindgerechte Komponenten und Geometrie (woom‑Beschreibung: 7‑Gang, kindgerechte Ergonomie)",
+              "Innerhalb Ihres Budgets bei vielen Händlern (~386 € im Preisvergleich)"
+            ],
+            "cons": [
+              "Im ADAC‑Test wurde bei Woom Schadstoffnachweis und wiederholt Risse an der Tretkurbel genannt (ADAC‑Hinweis) – beim Kauf prüfen",
+              "Woom‑Preise können schwanken; Verfügbarkeit prüfen"
+            ]
+          },
+          {
+            "rank": 3,
+            "brand": "Puky",
+            "model": "Skyride 20-3 Alu Light",
+            "model_year": null,
+            "category": "kids",
+            "price_eur": null,
+            "price_source_url": "https://www.adac.de/rund-ums-fahrzeug/zweirad/fahrrad-ebike-pedelec/tests/kinderfahrrad-test",
+            "key_specs": {
+              "weight_kg": 12.0,
+              "drivetrain": "3‑Gang Nabenschaltung",
+              "motor": null,
+              "battery_wh": null,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": "20\"",
+            "match_score": 85,
+            "why_fits": "Im ADAC‑Test Testsieger: kindgerechter tief geschwungener Einstieg und praxisgerechte 3‑Gang‑Nabe; daher sehr geeignet für 118 cm große Kinder.",
+            "pros": [
+              "ADAC‑Testsieger mit guter Praxistauglichkeit und sicherem Rahmendesign",
+              "Kindgerechte Nabenschaltung (3‑Gang) – einfach zu bedienen",
+              "PUKY hat robuste, kindgerechte Ergonomie"
+            ],
+            "cons": [
+              "Etwas schwerer als einige Leichtmodelle (ADAC: „knapp 12 kg“)",
+              "Preis auf der ADAC‑Seite nicht konkret angegeben; Verfügbarkeit und Preis prüfen beim Händler"
+            ]
+          }
+        ],
+        "buying_tips": [
+          "Probefahrt im Fachgeschäft: Kind sollte mit den Fußballen den Boden erreichen und bequem bremsen können",
+          "Achten Sie auf Gewicht (je leichter, desto einfacher fürs Kind), Sitzhöhe und Bedienbarkeit der Bremshebel",
+          "Bei Woom: vor dem Kauf auf Zustand der Tretkurbel/Servicehinweise achten (ADAC erwähnte Rissbildung)",
+          "Zubehör (Helm, Licht, Gepäck) einplanen – bei Decathlon bleibt genug Budget dafür",
+          "Wenn möglich Fachhändler wählen (Montage, Einstellung, Gewährleistung)"
+        ],
+        "sources": [
+          "https://www.adac.de/rund-ums-fahrzeug/zweirad/fahrrad-ebike-pedelec/tests/kinderfahrrad-test",
+          "https://woom.com/de_DE/fahrraeder/go-4",
+          "https://www.puky.de/ls-pro-20-7-00004490.html",
+          "https://www.idealo.de/preisvergleich/ProductCategory/4072F8363377.html"
+        ]
+      },
+      "passed": true
+    },
+    {
+      "case": "lastenrad",
+      "seconds": 207.4,
+      "output": "final_recommendation",
+      "error": null,
+      "tool_calls": {
+        "search_bikes": 12,
+        "research_knowledge": 1,
+        "read_product_page": 5
+      },
+      "web_calls": 17,
+      "model_requests": 12,
+      "input_tokens": 191991,
+      "output_tokens": 9810,
+      "cost_usd": 0.0309,
+      "retries": 2,
+      "bikes": 3,
+      "checks": {
+        "Ausgabetyp": true,
+        "Rangliste": true,
+        "1-5 Räder": true,
+        "Quellen belegt": true,
+        "Kategorie": true,
+        "Budget": true,
+        "mit Motor": true
+      },
+      "result": {
+        "title": "E-Lastenrad für zwei Kinder, hügeliges Gelände, Budget 6.000 €",
+        "summary": "Gesucht wurde ein E-Lastenrad als Autoersatz für zwei kleine Kinder in hügeligem Gelände mit ~6.000 € Budget. Platz 1 (Specialized Turbo Porto) bietet die stärkste Unterstützung und große Akku-Kapazität für beladene Fahrten bergauf.",
+        "requirements": {
+          "use_case": "E-Lastenrad für zwei kleine Kinder als Autoersatz in hügeligem Gelände",
+          "category": "cargo",
+          "electric": true,
+          "budget_eur": 6000.0,
+          "height_cm": null,
+          "inseam_cm": null,
+          "other_wishes": [
+            "Platz für zwei Kinder",
+            "starke Unterstützung bergauf",
+            "ausreichende Akku-Kapazität",
+            "stabile, alltagstaugliche Bauweise"
+          ]
+        },
+        "ranking": [
+          {
+            "rank": 1,
+            "brand": "Specialized",
+            "model": "Turbo Porto",
+            "model_year": 2024,
+            "category": "cargo",
+            "price_eur": 6466.0,
+            "price_source_url": "https://www.radfahren.de/test-teile/lastenraeder-2026-test",
+            "key_specs": {
+              "weight_kg": 42.58,
+              "drivetrain": null,
+              "motor": "Specialized 2.2 Cargo, 90 Nm",
+              "battery_wh": 710,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": null,
+            "match_score": 88,
+            "why_fits": "Sehr kräftiger Cargo-Motor (90 Nm) plus 710 Wh-Akku liefern zuverlässige Unterstützung in hügeligem Gelände mit zwei Kindern; modularer Longtail-Aufbau ist alltagstauglich.",
+            "pros": [
+              "Sehr starker Motor für steile Strecken",
+              "Großer Akku (710 Wh) für gute Reichweite unter Last",
+              "Hochwertige Ausstattung und Sicherheitsfeatures"
+            ],
+            "cons": [
+              "Preis liegt über dem Budget (≈7–10 % Überbudget je Quelle) – Mehrkosten einplanen",
+              "Relativ hohes Gewicht macht Rangierarbeiten schwerer"
+            ]
+          },
+          {
+            "rank": 2,
+            "brand": "TENWAYS",
+            "model": "Longtail Duo",
+            "model_year": 2026,
+            "category": "cargo",
+            "price_eur": 3499.0,
+            "price_source_url": "https://www.tenways.com/products/longtail",
+            "key_specs": {
+              "weight_kg": null,
+              "drivetrain": "Gates CDX Carbon Belt, Enviolo stufenloses Nabenschaltsystem",
+              "motor": "Mid-drive motor (Hersteller nicht genannt)",
+              "battery_wh": 720,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": null,
+            "match_score": 85,
+            "why_fits": "Sehr gutes Preis-Leistungs-Verhältnis, großer 720 Wh-Akku und Longtail-Aufbau bieten viel Reichweite und Platz für zwei Kinder bei deutlich unter Budget.",
+            "pros": [
+              "Deutlich unter Budget – großes Akku-Puffervolumen (720 Wh)",
+              "Riemenantrieb + stufenlose Nabenschaltung = wenig Wartung",
+              "Alltagstauglich und einfach zu beladen"
+            ],
+            "cons": [
+              "Motorhersteller/Leistungsdaten auf Produktseite nicht detailliert angegeben",
+              "Longtail ist in sehr engen Parklücken oder beim Treppentragen unhandlich"
+            ]
+          },
+          {
+            "rank": 3,
+            "brand": "Dolly",
+            "model": "Joy Hazelnut",
+            "model_year": 2025,
+            "category": "cargo",
+            "price_eur": 4798.0,
+            "price_source_url": "https://www.radfahren.de/test-teile/lastenraeder-2026-test",
+            "key_specs": {
+              "weight_kg": null,
+              "drivetrain": null,
+              "motor": "Bosch Performance Line, 75 Nm (BDU34)",
+              "battery_wh": 400,
+              "suspension": "Suntour Federgabel",
+              "brakes": null
+            },
+            "frame_size": null,
+            "match_score": 80,
+            "why_fits": "Kompaktes Bakfiets-Design, laut Test guter Alltagsnutzen und als Preis/Leistungs-Tipp bewertet; Bosch-Antrieb (Standard 400 Wh, 545 Wh optional) reicht für moderate Hügel, 545 Wh empfohlen.",
+            "pros": [
+              "Gutes Preis-Leistungs-Verhältnis im Test",
+              "Komfortable Boxlösung, trotzdem schmal genug für Stadtverkehr",
+              "Option für größeres Akku (545 Wh) verfügbar"
+            ],
+            "cons": [
+              "Standardakku 400 Wh kann bei häufigen Hügeln und voller Zuladung knapp werden — Upgrade empfehlenswert",
+              "Detaillierte Händler-/Ausstattungsvarianten vor Kauf prüfen"
+            ]
+          }
+        ],
+        "buying_tips": [
+          "Mach eine Probefahrt beladen (mit Kindersitzen oder Sandsäcken), um Motorunterstützung und Handling in Hügeln zu prüfen",
+          "Achte auf Akku-Kapazität und ob er herausnehmbar ist (praktisch zum Laden in der Wohnung)",
+          "Hydraulische Scheibenbremsen sind wichtig bei hoher Zuladung und bergigen Strecken — darauf achten",
+          "Überlege Zubehör: Wetterschutz/Haube, Fußbretter, Polster, Einparkhilfen/Spurführer und ein gutes Schloss",
+          "Vorjahresmodelle oder Ausstellungsstücke prüfen, um unter Budget zu bleiben"
+        ],
+        "sources": [
+          "https://www.tenways.com/products/longtail",
+          "https://www.radfahren.de/test-teile/lastenraeder-2026-test",
+          "https://downtown-mag.com/en/specialized-porto-cargo-bike-review",
+          "https://dolly-bakfiets.com/en/product/dolly-joy"
+        ]
+      },
+      "passed": true
+    },
+    {
+      "case": "unvollstaendig",
+      "seconds": 13.2,
+      "output": "ask_user",
+      "error": null,
+      "tool_calls": {},
+      "web_calls": 0,
+      "model_requests": 1,
+      "input_tokens": 2433,
+      "output_tokens": 754,
+      "cost_usd": 0.0018,
+      "retries": 0,
+      "bikes": 0,
+      "checks": {
+        "Ausgabetyp": true,
+        "Rückfrage": true
+      },
+      "result": null,
+      "passed": true
+    }
+  ]
+}
