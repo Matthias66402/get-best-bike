@@ -1,0 +1,863 @@
+{
+  "summary": {
+    "runs": 5,
+    "passed_runs": 5,
+    "checks_passed": "33/33",
+    "mean_seconds": 255.1,
+    "mean_web_calls": 14.4,
+    "mean_model_requests": 11.6,
+    "mean_input_tokens": 173232.6,
+    "mean_output_tokens": 11335.2,
+    "mean_retries": 1.4,
+    "total_cost_usd": 0.2
+  },
+  "runs": [
+    {
+      "case": "pendler-ebike",
+      "seconds": 415.8,
+      "output": "final_recommendation",
+      "error": null,
+      "tool_calls": {
+        "search_bikes": 12,
+        "research_knowledge": 1,
+        "read_product_page": 8,
+        "recommend_frame_size": 5
+      },
+      "web_calls": 20,
+      "model_requests": 15,
+      "input_tokens": 305469,
+      "output_tokens": 22061,
+      "cost_usd": 0.076,
+      "retries": 3,
+      "bikes": 5,
+      "checks": {
+        "Ausgabetyp": true,
+        "Rangliste": true,
+        "1-5 Räder": true,
+        "Quellen belegt": true,
+        "Kategorie": true,
+        "Budget": true,
+        "mit Motor": true,
+        "Rahmengröße": true
+      },
+      "result": {
+        "title": "Trekking‑E‑Bike bis 3.500 € für tägliches Pendeln (15 km, teils Schotter)",
+        "summary": "Gesucht wurde ein Trekking‑E‑Bike für tägliches Pendeln (15 km pro Strecke) mit Schotteranteilen. Platz 1 ist das Cube Kathmandu Hybrid ONE 800: großer Akku (800 Wh), Vollausstattung und Preis deutlich unter 3.500 € — daher besonders passend für Ihre Strecke.",
+        "requirements": {
+          "use_case": "täglich 15 km pendeln, teils Schotter",
+          "category": "trekking",
+          "electric": true,
+          "budget_eur": 3500.0,
+          "height_cm": 175,
+          "inseam_cm": 82,
+          "other_wishes": [
+            "robuste Reifen / Gravel‑geeignet",
+            "vollausgestattet (Gepäckträger, Schutzbleche)"
+          ]
+        },
+        "ranking": [
+          {
+            "rank": 1,
+            "brand": "Cube",
+            "model": "Kathmandu Hybrid ONE 800",
+            "model_year": 2026,
+            "category": "trekking",
+            "price_eur": 2699.99,
+            "price_source_url": "https://www.idealo.de/preisvergleich/OffersOfProduct/207788662_-kathmandu-hybrid-one-800-2026-cube.html",
+            "key_specs": {
+              "weight_kg": 29.3,
+              "drivetrain": "Shimano Cues 10‑Gang (Kettenschaltung)",
+              "motor": "Bosch Performance Line CX Gen.5, 100 Nm",
+              "battery_wh": 800,
+              "suspension": "Federgabel 100 mm",
+              "brakes": "hydraulische Scheibenbremsen"
+            },
+            "frame_size": "L (54 cm)",
+            "match_score": 95,
+            "why_fits": "800 Wh Akku, vollausgestattete Trekking‑Ausstattung und komfortorientierte Geometrie machen es ideal für die täglichen 30 km mit Schotteranteilen; Preis deutlich unter Budget.",
+            "pros": [
+              "800‑Wh Akku für lange Distanzen und Reserve",
+              "vollständige Trekking‑Ausstattung (Gepäckträger, Schutzbleche, Licht)",
+              "komfortable Federung für Schotteranteile"
+            ],
+            "cons": [
+              "Hoher Gewichtswert (~29,3 kg) — spürbar bei häufigen Stop‑and‑go‑Passagen",
+              "weniger agil als leichte Gravelbikes oder sportliche Tourer"
+            ]
+          },
+          {
+            "rank": 2,
+            "brand": "Victoria",
+            "model": "TRESALO 15",
+            "model_year": null,
+            "category": "trekking",
+            "price_eur": 3799.0,
+            "price_source_url": "https://www.idealo.de/preisvergleich/OffersOfProduct/211441776_-tresalo-15-herren-625wh-28-silber-victoria-bikes.html",
+            "key_specs": {
+              "weight_kg": 27.5,
+              "drivetrain": "Shimano Nexus 5 (Nabenschaltung)",
+              "motor": "Bosch Performance Line",
+              "battery_wh": 625,
+              "suspension": null,
+              "brakes": "hydraulische Scheibenbremsen"
+            },
+            "frame_size": "L (54 cm)",
+            "match_score": 88,
+            "why_fits": "Riemen + Nabenschaltung minimieren Wartungsaufwand; 625 Wh Akku ist für tägliche Pendelstrecken geeignet. Sehr praktisch für Alltagsnutzer, die wenig Pflegeaufwand wollen.",
+            "pros": [
+              "Riemen‑ und Nabenschaltung = sehr wartungsarm",
+              "Hydraulische Scheibenbremsen und Vollausstattung für Alltag",
+              "625‑Wh Akku ausreichend für moderaten Unterstützungsgrad auf 30 km"
+            ],
+            "cons": [
+              "Preis 3.799 € liegt ca. 8.5 % über dem Budget (innerhalb 10% Toleranz)",
+              "nur 5 Gänge (Nexus) können bei starken Steigungen knapp werden"
+            ]
+          },
+          {
+            "rank": 3,
+            "brand": "Koga",
+            "model": "E‑F3 5.0 Mixed",
+            "model_year": null,
+            "category": "trekking",
+            "price_eur": 3799.0,
+            "price_source_url": "https://www.radfahren.de/test-teile/e-trekkingraeder-2026-test",
+            "key_specs": {
+              "weight_kg": null,
+              "drivetrain": null,
+              "motor": "Bosch Performance Line SX",
+              "battery_wh": 400,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": "L (54 cm)",
+            "match_score": 84,
+            "why_fits": "Sehr gutes Testergebnis; als leichter, flotter Tourer mit Fokus auf Asphalt+leichtes Gelände gut geeignet, falls Sie ein agileres Rad bevorzugen.",
+            "pros": [
+              "Sehr gutes Testurteil im Vergleichstest",
+              "sportlich‑leichte Fahrcharakteristik für zügige Pendelstrecken"
+            ],
+            "cons": [
+              "Preis in Testquelle 3.799 € (ca. 8.5 % über Budget) — Händlerpreise prüfen",
+              "kleinerer Akku (~400 Wh) — für volle Unterstützung über 30 km ggf. knapp"
+            ]
+          },
+          {
+            "rank": 4,
+            "brand": "Giant",
+            "model": "Talon E+ EX Gen2",
+            "model_year": null,
+            "category": "trekking",
+            "price_eur": 2749.0,
+            "price_source_url": "https://www.radfahren.de/test-teile/e-trekkingraeder-2026-test",
+            "key_specs": {
+              "weight_kg": 24.4,
+              "drivetrain": null,
+              "motor": "Yamaha SyncDrive",
+              "battery_wh": 430,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": "L (54 cm)",
+            "match_score": 76,
+            "why_fits": "Gutes Preis‑/Leistungsverhältnis (laut Test) und vergleichsweise geringes Gewicht — eine Option, wenn Sie ein wendigeres, leichtes Rad für Pendeln bevorzugen.",
+            "pros": [
+              "Sehr guter Preis im Test (2.749 €)",
+              "relativ leicht (~24,4 kg) für ein voll ausgestattetes Rad"
+            ],
+            "cons": [
+              "Eher MTB‑orientierte Gene — Sitzposition und Handling unterscheiden sich von klassischen Trekkingrädern",
+              "Akku (~430 Wh) ist kleiner; für volle Unterstützung auf 30 km evtl. knapp"
+            ]
+          },
+          {
+            "rank": 5,
+            "brand": "Victoria",
+            "model": "Tresalo 6",
+            "model_year": null,
+            "category": "trekking",
+            "price_eur": 3499.0,
+            "price_source_url": "https://www.radfahren.de/test-teile/e-trekkingraeder-2026-test",
+            "key_specs": {
+              "weight_kg": null,
+              "drivetrain": null,
+              "motor": null,
+              "battery_wh": 600,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": "L (54 cm)",
+            "match_score": 74,
+            "why_fits": "Im Test als ausgewogener Tourer bewertet; die ca. 600‑Wh‑Akkukapazität (laut Testtext) macht sie tauglich für tägliche Pendelstrecken mit Schotteranteilen.",
+            "pros": [
+              "Guter Kompromiss aus Reichweite (≈600 Wh) und Alltagstauglichkeit",
+              "Testplatzierung zeigt ausgewogene Fahreigenschaften für Tour und Pendeln"
+            ],
+            "cons": [
+              "Preis 3.499 € liegt nahe am Budget (kein großer Spielraum)",
+              "konkrete Motor- und Ausstattungsvarianten beim Händler prüfen"
+            ]
+          }
+        ],
+        "buying_tips": [
+          "Probefahrt in L (54 cm) — bei sportlicher Sitzposition auch M testen; die Empfehlungen basieren auf Ihrer Schrittlänge von 82 cm.",
+          "Akkugröße wählen: für 30 km/Tag empfehle ich mindestens 500–625 Wh; 800 Wh ist komfortabel und reduziert Reichweiten‑Sorgen.",
+          "Wenn Sie wenig Wartung wollen: Riemen + Nabenschaltung (Victoria) bevorzugen; für größere Übersetzungsbandbreite Kette + Kettenschaltung (Cube Kathmandu).",
+          "Vergleiche Angebote (Händler, Vorjahresmodelle, Demo): oft mehrere hundert Euro Ersparnis; frage nach Reichweitenschätzungen für deine konkrete Strecke und Temperaturbedingungen."
+        ],
+        "sources": [
+          "https://www.idealo.de/preisvergleich/OffersOfProduct/207788662_-kathmandu-hybrid-one-800-2026-cube.html (Cube Kathmandu Angebotsseite)",
+          "https://www.cube.eu/cube-kathmandu-hybrid-one-800-silverstar-n-reflex/1112112 (Cube Produktseite)",
+          "https://www.idealo.de/preisvergleich/OffersOfProduct/211441776_-tresalo-15-herren-625wh-28-silber-victoria-bikes.html (Victoria TRESALO 15 — Idealo)",
+          "https://www.radfahren.de/test-teile/e-trekkingraeder-2026-test (Vergleichstest E‑Trekkingräder 2026)",
+          "https://www.cube.eu/de-de/e-bikes/mountainbike (Cube E‑Bikes Übersicht)"
+        ]
+      },
+      "passed": true
+    },
+    {
+      "case": "gravel-ohne-motor",
+      "seconds": 139.9,
+      "output": "final_recommendation",
+      "error": null,
+      "tool_calls": {
+        "search_bikes": 10,
+        "research_knowledge": 1,
+        "read_product_page": 3,
+        "recommend_frame_size": 1
+      },
+      "web_calls": 13,
+      "model_requests": 7,
+      "input_tokens": 62596,
+      "output_tokens": 7993,
+      "cost_usd": 0.025,
+      "retries": 0,
+      "bikes": 5,
+      "checks": {
+        "Ausgabetyp": true,
+        "Rangliste": true,
+        "1-5 Räder": true,
+        "Quellen belegt": true,
+        "Kategorie": true,
+        "Budget": true,
+        "ohne Motor": true,
+        "Rahmengröße": true
+      },
+      "result": {
+        "title": "Gravelbike (ohne Motor) bis 2.000 € – Feierabend & gelegentliches Bikepacking",
+        "summary": "Gesucht war ein nicht‑motorisiertes Gravelbike bis 2.000 € für Feierabendrunden und gelegentliches Bikepacking (Körpergröße 182 cm). Platz 1 ist das Canyon Grizl CF 6: sehr gutes Preis‑Leistungs‑Verhältnis, Gravel‑taugliche Ausstattung und Reichweite für Gepäckmontage und breitere Reifen.",
+        "requirements": {
+          "use_case": "Feierabendrunden und gelegentliches Bikepacking",
+          "category": "gravel",
+          "electric": false,
+          "budget_eur": 2000.0,
+          "height_cm": 182,
+          "inseam_cm": null,
+          "other_wishes": [
+            "Bikepacking‑Mounts / Gepäckaufnahmen",
+            "kein Motor"
+          ]
+        },
+        "ranking": [
+          {
+            "rank": 1,
+            "brand": "Canyon",
+            "model": "Grizl CF 6",
+            "model_year": null,
+            "category": "gravel",
+            "price_eur": 1799.0,
+            "price_source_url": "https://www.canyon.com/de-de/lp/gravel-bikes/bis-2000-euro",
+            "key_specs": {
+              "weight_kg": null,
+              "drivetrain": "SRAM Apex XPLR",
+              "motor": null,
+              "battery_wh": null,
+              "suspension": "starr",
+              "brakes": null
+            },
+            "frame_size": "L (57 cm)",
+            "match_score": 92,
+            "why_fits": "Sehr gutes Preis‑Leistungs‑Verhältnis, Ausstattung und Reifenfreiheit auf ein echtes Gravel‑Bike abgestimmt; direkt unter dem Budget und gut für Bikepacking (Montagemöglichkeiten).",
+            "pros": [
+              "Sehr guter Preis für die Ausstattung",
+              "SRAM Apex XPLR bietet robuste, graveltaugliche Schaltperformance",
+              "Gute Reifenfreiheit und Mounts für Gepäck"
+            ],
+            "cons": [
+              "Canyon ist Direktvertrieb — Händlerservice ggf. weniger lokal verfügbar",
+              "Auf der Landingpage keine detaillierten Angaben zu Bremsen/Gewicht (bei Bedarf spezifizieren)"
+            ]
+          },
+          {
+            "rank": 2,
+            "brand": "Canyon",
+            "model": "Grizl 7 ESC",
+            "model_year": null,
+            "category": "gravel",
+            "price_eur": 1999.0,
+            "price_source_url": "https://www.canyon.com/de-de/lp/gravel-bikes/bis-2000-euro",
+            "key_specs": {
+              "weight_kg": null,
+              "drivetrain": "Shimano GRX RD-RX822 12s",
+              "motor": null,
+              "battery_wh": null,
+              "suspension": "starr",
+              "brakes": null
+            },
+            "frame_size": "L (57 cm)",
+            "match_score": 90,
+            "why_fits": "GRX‑12 Ausstattung und Reifenfreiheit machen das Rad sehr vielseitig für schnelle Feierabendrunden und längere Touren mit Gepäck; Preis liegt am oberen Ende des Budgets.",
+            "pros": [
+              "Starke GRX‑12 Schaltung für breite Übersetzungsbandbreite",
+              "Ausgewogene Geometrie für Ausdauer und Komfort",
+              "Direkt verfügbar im Budgetrahmen"
+            ],
+            "cons": [
+              "Preis liegt knapp an der Budgetgrenze (1.999 €)",
+              "Direktvertrieb — wie oben, Serviceüberlegung"
+            ]
+          },
+          {
+            "rank": 3,
+            "brand": "Canyon",
+            "model": "Grizl 5",
+            "model_year": null,
+            "category": "gravel",
+            "price_eur": 1299.0,
+            "price_source_url": "https://www.canyon.com/de-de/lp/gravel-bikes/bis-2000-euro",
+            "key_specs": {
+              "weight_kg": null,
+              "drivetrain": "Shimano CUES 10/11-speed",
+              "motor": null,
+              "battery_wh": null,
+              "suspension": "starr",
+              "brakes": null
+            },
+            "frame_size": "L (57 cm)",
+            "match_score": 85,
+            "why_fits": "Günstiger Einstieg ins Grizl‑Programm, gute Basis für Feierabendfahrten und leichtes Bikepacking; großes Sparpotenzial für Upgrades.",
+            "pros": [
+              "Sehr attraktiver Preis",
+              "Solide Basiskomponenten, gut aufrüstbar",
+              "Canyon‑Montagepunkte für Gepäck"
+            ],
+            "cons": [
+              "Komponenten sind einfacher als bei teureren Modellen (weniger fein abgestuft)",
+              "Bei hartem Offroad‑Einsatz ggf. spätere Upgrades nötig"
+            ]
+          },
+          {
+            "rank": 4,
+            "brand": "Stevens",
+            "model": "Gavere Com",
+            "model_year": 2027,
+            "category": "gravel",
+            "price_eur": 2039.0,
+            "price_source_url": "https://www.stevensbikes.de/de/be/gravel/gravel/gavere-com",
+            "key_specs": {
+              "weight_kg": 10.7,
+              "drivetrain": "Shimano GRX 820/610 2x12",
+              "motor": null,
+              "battery_wh": null,
+              "suspension": "starr",
+              "brakes": "Shimano GRX 610 (hydraulisch)"
+            },
+            "frame_size": "L (57 cm)",
+            "match_score": 86,
+            "why_fits": "Sehr gut ausgestattet für Bikepacking (zahlreiche Gewindeösen), hochwertige GRX‑2x12‑Schaltung und komfortable Geometrie; direkt für längere Touren geeignet.",
+            "pros": [
+              "Viele Gepäck‑ und Montagemöglichkeiten (ideal fürs Bikepacking)",
+              "Hochwertige 2×12 GRX‑Ausstattung für feine Gangabstufung auf Tour",
+              "Relativ guter Komfort und stabile Alu‑Konstruktion"
+            ],
+            "cons": [
+              "UVP leicht über dem Budget (2.039 €, aber <10 % über 2.000 €)",
+              "Gewicht (10,7 kg) etwas höher als sehr leichte Carbon‑Gravelbikes"
+            ]
+          },
+          {
+            "rank": 5,
+            "brand": "Ridley",
+            "model": "Grifn A Gravel",
+            "model_year": null,
+            "category": "gravel",
+            "price_eur": null,
+            "price_source_url": "https://www.fahrrad-xxl.de/serie/ridley-grifn",
+            "key_specs": {
+              "weight_kg": null,
+              "drivetrain": "Shimano GRX400",
+              "motor": null,
+              "battery_wh": null,
+              "suspension": "starr",
+              "brakes": null
+            },
+            "frame_size": "L (57 cm)",
+            "match_score": 80,
+            "why_fits": "Vielseitiges All‑road‑Konzept mit vielen Befestigungspunkten, gut für gemischte Strecken und Bikepacking; mehrere Ausstattungsstufen verfügbar, daher gut an Budget anpassbar.",
+            "pros": [
+              "Sehr vielseitige Plattform mit vielen Montagepunkten (bikepacking‑freundlich)",
+              "Aluminium‑Preisoptionen im Budget"
+            ],
+            "cons": [
+              "Konkreter Preis hängt von Variante ab (hier nicht eindeutig auf Produktseite angegeben)",
+              "Je nach Ausstattung evtl. Upgrades nötig, um schwere Bikepacking‑Lasten komfortabel zu tragen"
+            ]
+          }
+        ],
+        "buying_tips": [
+          "Probefahrt in Größe L (empfohlen) — bei sportlicher Fahrweise evtl. M testen, bei sehr aufrechter Sitz XL prüfen",
+          "Achte auf Tubeless‑Bereitschaft der Laufräder und Reifenbreite ≥40–45 mm für Bikepacking",
+          "Bei direktem Online‑Kauf (z. B. Canyon) vorher Werkstattservice/Einpunkt prüfen (Montage, Einstellung)",
+          "Für Bikepacking auf zusätzliche Gepäckösen, Gepäckträger und Schutzblechoptionen achten",
+          "Vergleiche Vorjahresmodelle oder konfigurierbare Händlerangebote für Rabatte"
+        ],
+        "sources": [
+          "https://www.canyon.com/de-de/lp/gravel-bikes/bis-2000-euro",
+          "https://www.stevensbikes.de/de/be/gravel/gravel/gavere-com",
+          "https://www.fahrrad-xxl.de/serie/ridley-grifn",
+          "https://www.rennrad-news.de/news/rennrad/gravel-bike/gravel-bike-test"
+        ]
+      },
+      "passed": true
+    },
+    {
+      "case": "kinderrad",
+      "seconds": 257.7,
+      "output": "final_recommendation",
+      "error": null,
+      "tool_calls": {
+        "search_bikes": 10,
+        "research_knowledge": 1,
+        "read_product_page": 10,
+        "recommend_frame_size": 2
+      },
+      "web_calls": 20,
+      "model_requests": 13,
+      "input_tokens": 180951,
+      "output_tokens": 12620,
+      "cost_usd": 0.0445,
+      "retries": 1,
+      "bikes": 5,
+      "checks": {
+        "Ausgabetyp": true,
+        "Rangliste": true,
+        "1-5 Räder": true,
+        "Quellen belegt": true,
+        "Kategorie": true,
+        "Budget": true,
+        "ohne Motor": true,
+        "Rahmengröße": true
+      },
+      "result": {
+        "title": "Leichtes 20\" Kinderrad bis 500 € (für 118 cm)",
+        "summary": "Gesucht wurde ein leichtes Kinderrad für Ihre Tochter (118 cm) bis 500 €. Platz 1 ist das Woom GO 4: sehr leicht und kindgerecht, passt mit 20\" gut zur Größe Ihrer Tochter; es liegt aber knapp (≤10 %) über dem Budget. Die anderen Vorschläge bieten gute Kompromisse zwischen Gewicht, Ausstattung und Preis.",
+        "requirements": {
+          "use_case": "leichtes Kinderrad für Tochter (118 cm)",
+          "category": "kids",
+          "electric": false,
+          "budget_eur": 500.0,
+          "height_cm": 118,
+          "inseam_cm": null,
+          "other_wishes": [
+            "leicht",
+            "20 Zoll empfohlen"
+          ]
+        },
+        "ranking": [
+          {
+            "rank": 1,
+            "brand": "Woom",
+            "model": "GO 4",
+            "model_year": 2026,
+            "category": "kids",
+            "price_eur": 549.0,
+            "price_source_url": "https://www.idealo.de/preisvergleich/OffersOfProduct/206116149_-go-4-woom.html",
+            "key_specs": {
+              "weight_kg": 7.8,
+              "drivetrain": "Microshift 7-Gang",
+              "motor": null,
+              "battery_wh": null,
+              "suspension": "starr",
+              "brakes": "V-Brake (kindgerechtes Hebelverhältnis)"
+            },
+            "frame_size": "20\"",
+            "match_score": 88,
+            "why_fits": "Sehr leichtes, kindgerecht aufgebautes 20\"-Rad, empfohlen für 115–130 cm. Passt damit gut zur Körpergröße Ihrer Tochter; liegt aber knapp über dem Budget (≤10 %).",
+            "pros": [
+              "Sehr leicht (~7,8 kg) — einfach für Kinder zu handhaben",
+              "Kindgerechte Bremshebel und Sattelverstellung",
+              "Gute Ergonomie und kindoptimierte Komponenten"
+            ],
+            "cons": [
+              "Mit 549 € knapp 10 % über dem Wunschbudget",
+              "Keine Schutzbleche/Licht ab Werk (kann nachgerüstet werden)"
+            ]
+          },
+          {
+            "rank": 2,
+            "brand": "Scott",
+            "model": "Roxter 20",
+            "model_year": 2026,
+            "category": "kids",
+            "price_eur": 549.0,
+            "price_source_url": "https://kids-bike-test.com/kinderfahrrad-test/scott-scott-roxter-20-green",
+            "key_specs": {
+              "weight_kg": 10.3,
+              "drivetrain": "1x8 Shimano",
+              "motor": null,
+              "battery_wh": null,
+              "suspension": "starr",
+              "brakes": "mechanische Scheibenbremse (Tektro)"
+            },
+            "frame_size": "20\"",
+            "match_score": 82,
+            "why_fits": "Sportliches 20\"-Rad, geeignet für 115–130 cm; gute Brems-/Reifen-Kombination für Gelände und Alltag. Preis liegt wie bei Platz 1 knapp am oberen Ende Ihrer Grenze.",
+            "pros": [
+              "Geländetauglich mit voluminösen Reifen und Scheibenbremsen",
+              "Robuste Komponenten, sportlicher Charakter"
+            ],
+            "cons": [
+              "Mit ~10,3 kg deutlich schwerer als sehr leichte Kinderbikes",
+              "Preis (ca. 549 €) liegt knapp über Budget"
+            ]
+          },
+          {
+            "rank": 3,
+            "brand": "Btwin",
+            "model": "Riverside 900",
+            "model_year": null,
+            "category": "kids",
+            "price_eur": 319.99,
+            "price_source_url": "https://www.klarna.com/de/shopping/pl/cl356/3268323740/Fahrraeder/Btwin-Kinderfahrrad-20-Zoll-Riverside-900-Gruen",
+            "key_specs": {
+              "weight_kg": null,
+              "drivetrain": null,
+              "motor": null,
+              "battery_wh": null,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": "20\"",
+            "match_score": 75,
+            "why_fits": "Günstige, breit verfügbare 20\"-Option deutlich unter Ihrem Budget — gute Wahl, wenn Preis/Robustheit wichtiger sind als absolutes Minimalgewicht.",
+            "pros": [
+              "Sehr gutes Preis-Leistungs-Verhältnis (ca. 320 €)",
+              "Gute Verfügbarkeit im Decathlon-Umfeld"
+            ],
+            "cons": [
+              "Nicht so leicht wie spezialisierte Kinderbikes (häufig höheres Gewicht)",
+              "Weniger kindoptimierte Komponenten im Vergleich zu spezialisierten Herstellern"
+            ]
+          },
+          {
+            "rank": 4,
+            "brand": "Raymon",
+            "model": "Yanga 20 Pure",
+            "model_year": 2027,
+            "category": "kids",
+            "price_eur": 429.0,
+            "price_source_url": "https://www.fahrrad-xxl.de/marken/raymon/radgroesse.20-zoll",
+            "key_specs": {
+              "weight_kg": null,
+              "drivetrain": null,
+              "motor": null,
+              "battery_wh": null,
+              "suspension": "starr",
+              "brakes": null
+            },
+            "frame_size": "20\"",
+            "match_score": 74,
+            "why_fits": "Solides 20\"-Kinderrad mit guter Verfügbarkeit und moderatem Preis — passt in die Körpergrößenempfehlung und bleibt im Budget.",
+            "pros": [
+              "Solide Ausstattung für Alltag und erste Trails",
+              "Preis innerhalb Ihres Budgets (ca. 429 €)"
+            ],
+            "cons": [
+              "Nicht so leicht wie spezialisierte Kinderhersteller",
+              "Ausstattung weniger kindoptimiert als bei Top-Kids-Marken"
+            ]
+          },
+          {
+            "rank": 5,
+            "brand": "Raymon",
+            "model": "TwoRay 1.0 - 20 Zoll",
+            "model_year": 2027,
+            "category": "kids",
+            "price_eur": 339.99,
+            "price_source_url": "https://www.fahrrad-xxl.de/marken/raymon/radgroesse.20-zoll",
+            "key_specs": {
+              "weight_kg": null,
+              "drivetrain": null,
+              "motor": null,
+              "battery_wh": null,
+              "suspension": "starr",
+              "brakes": null
+            },
+            "frame_size": "20\"",
+            "match_score": 72,
+            "why_fits": "Preisgünstiges 20\"-Modell mit niedrigem Einstieg und vernünftiger Ausstattung — ein guter Kompromiss, wenn das Budget strikt ist.",
+            "pros": [
+              "Günstig (ca. 339,99 €) und leicht erhältlich",
+              "Niedriger Einstieg für einfaches Auf-/Absteigen"
+            ],
+            "cons": [
+              "Weniger leicht als spezielle Kinderbikes",
+              "Komponenten nicht so kindoptimiert wie bei Woom/Frog"
+            ]
+          }
+        ],
+        "buying_tips": [
+          "Probefahrt machen: Das wichtigste Kriterium ist die richtige Reichweite (Sitz-zu-Lenker) — bei 118 cm meist 20\" möglich, alternativ 16\" ausprobieren.",
+          "Auf Gewicht achten: Je leichter das Rad, desto einfacher für das Kind. Zielwert bei 20\" ≈ unter 9 kg für sehr leichtes Handling.",
+          "Kindgerechte Bremshebel und gut einstellbarer Sattel sind wichtig.",
+          "Wenn Budget strikt 500 € ist: Btwin/Raymon-Modelle bleiben sicher innerhalb des Budgets; für das leichteste, kindgerechteste Rad (Woom) wären ~50 € Aufpreis einzuplanen.",
+          "Weitere Option: Vorjahresmodelle oder Händlerangebote prüfen — oft deutlich günstiger bei nur kleinen optischen Änderungen."
+        ],
+        "sources": [
+          "https://www.idealo.de/preisvergleich/OffersOfProduct/206116149_-go-4-woom.html",
+          "https://kids-bike-test.com/kinderfahrrad-test/scott-scott-roxter-20-green",
+          "https://www.klarna.com/de/shopping/pl/cl356/3268323740/Fahrraeder/Btwin-Kinderfahrrad-20-Zoll-Riverside-900-Gruen",
+          "https://www.fahrrad-xxl.de/marken/raymon/radgroesse.20-zoll",
+          "research_knowledge"
+        ]
+      },
+      "passed": true
+    },
+    {
+      "case": "lastenrad",
+      "seconds": 443.8,
+      "output": "final_recommendation",
+      "error": null,
+      "tool_calls": {
+        "search_bikes": 10,
+        "research_knowledge": 1,
+        "read_product_page": 9,
+        "recommend_frame_size": 1
+      },
+      "web_calls": 19,
+      "model_requests": 22,
+      "input_tokens": 313911,
+      "output_tokens": 13224,
+      "cost_usd": 0.0522,
+      "retries": 3,
+      "bikes": 5,
+      "checks": {
+        "Ausgabetyp": true,
+        "Rangliste": true,
+        "1-5 Räder": true,
+        "Quellen belegt": true,
+        "Kategorie": true,
+        "Budget": true,
+        "mit Motor": true
+      },
+      "result": {
+        "title": "E-Lastenrad (E-Bike) für 2 Kinder — bis 6.000 €",
+        "summary": "Gesucht wurde ein E-Lastenrad als Autoersatz für zwei kleine Kinder in hügeligem Gelände. Platz 1 (Tenways Cargo One) liegt vorn, weil es viel Motorleistung (100 Nm), einen großen Akku (960 Wh) und eine geräumige Familien‑Long‑John‑Box zum Preis von 4.999 € kombiniert — das passt sehr gut für bergige Strecken mit zwei Kindern.",
+        "requirements": {
+          "use_case": "E-Lastenrad für zwei kleine Kinder als Autoersatz in hügeligem Gelände",
+          "category": "cargo",
+          "electric": true,
+          "budget_eur": 6000.0,
+          "height_cm": null,
+          "inseam_cm": null,
+          "other_wishes": [
+            "Platz für 2 Kinder",
+            "starker Motor für Hügel",
+            "ggf. Regenverdeck",
+            "stabiler Ständer"
+          ]
+        },
+        "ranking": [
+          {
+            "rank": 1,
+            "brand": "Tenways",
+            "model": "Cargo One",
+            "model_year": null,
+            "category": "cargo",
+            "price_eur": 4999.0,
+            "price_source_url": "https://www.nimms-rad.de/news/lastenraeder-unter-5000-euro",
+            "key_specs": {
+              "weight_kg": 56.0,
+              "drivetrain": "Gates-Riemen, Enviolo stufenlos",
+              "motor": "Bafang M600 Mittelmotor, 100 Nm",
+              "battery_wh": 960,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": null,
+            "match_score": 92,
+            "why_fits": "Sehr hohe Motorleistung (100 Nm) und großer Akku (960 Wh) kombiniert mit einer großzügigen Long‑John‑Box für zwei Kinder — ideal für hügelige Strecken und längere Alltagstouren.",
+            "pros": [
+              "Kraftvoller Motor für steile Anstiege",
+              "Großer Akku für mehr Reichweite",
+              "Family‑Long‑John mit Platz für zwei Kinder"
+            ],
+            "cons": [
+              "Kein serienmäßiges Regenverdeck in der Beschreibung",
+              "Relativ hohes Gewicht (56 kg)"
+            ]
+          },
+          {
+            "rank": 2,
+            "brand": "Decathlon",
+            "model": "BTWIN F900E Family",
+            "model_year": null,
+            "category": "cargo",
+            "price_eur": 4999.0,
+            "price_source_url": "https://www.nimms-rad.de/news/lastenraeder-unter-5000-euro",
+            "key_specs": {
+              "weight_kg": 66.0,
+              "drivetrain": null,
+              "motor": "Brose S Mag Mittelmotor, 90 Nm",
+              "battery_wh": 630,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": null,
+            "match_score": 90,
+            "why_fits": "Als Familien‑Long John mit integriertem Regen-/Sonnendach, Tür und 5‑Punkt‑Gurten konzipiert; 90 Nm Motor bietet sehr gute Unterstützung bergauf — sehr familienfreundlich.",
+            "pros": [
+              "Integriertes Verdeck und Tür",
+              "Starker Motor (90 Nm)",
+              "Hohe Box‑Zuladung (bis 101 kg)"
+            ],
+            "cons": [
+              "Relativ schwer (66 kg) — Handling außerhalb des Fahrbetriebs",
+              "UVP; Ausstattung/Verfügbarkeit beim Händler prüfen"
+            ]
+          },
+          {
+            "rank": 3,
+            "brand": "Gazelle",
+            "model": "Makki Load",
+            "model_year": null,
+            "category": "cargo",
+            "price_eur": 4999.0,
+            "price_source_url": "https://www.nimms-rad.de/news/lastenraeder-unter-5000-euro",
+            "key_specs": {
+              "weight_kg": 45.5,
+              "drivetrain": null,
+              "motor": "Bosch Performance Line, 65 Nm",
+              "battery_wh": 545,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": null,
+            "match_score": 84,
+            "why_fits": "Robuste, hochgezogene Transportbox (EPP) und familientaugliche Details; guter Alltagsnutzen. Motor mit 65 Nm reicht für moderate Hügel, bei sehr steilen Anstiegen evtl. weniger kraftvoll.",
+            "pros": [
+              "Gute Verarbeitung und sicherer Doppelständer",
+              "Familienfreundliche Box mit einfacher Einstiegshöhe",
+              "Preis im Budget"
+            ],
+            "cons": [
+              "Bosch Performance 65 Nm könnte in sehr steilen Abschnitten an seine Grenzen kommen",
+              "Akkukapazität moderat (545 Wh)"
+            ]
+          },
+          {
+            "rank": 4,
+            "brand": "Super Mighty",
+            "model": "Super Mighty Sweat",
+            "model_year": null,
+            "category": "cargo",
+            "price_eur": 2890.0,
+            "price_source_url": "https://www.nimms-rad.de/news/lastenraeder-unter-5000-euro",
+            "key_specs": {
+              "weight_kg": 33.0,
+              "drivetrain": "Microshift 8-Gang",
+              "motor": "Bafang Hecknabenmotor, 60 Nm",
+              "battery_wh": 522,
+              "suspension": null,
+              "brakes": "Tektro hydraulische Scheibenbremsen (160 mm)"
+            },
+            "frame_size": null,
+            "match_score": 72,
+            "why_fits": "Preisgünstiger, leichter Einstieg mit kompakter Bauweise; geeignet, wenn Budget wichtiger ist als maximale Berg-Performance.",
+            "pros": [
+              "Sehr günstiger Einstiegspreis",
+              "Niedriges Gewicht und handlich",
+              "Optionale Kidsbox als Zubehör"
+            ],
+            "cons": [
+              "Motor (60 Nm) und Akku (522 Wh) sind für starke Steigungen suboptimal",
+              "Box evtl. nur als Zubehör erhältlich (zusätzliche Kosten)"
+            ]
+          },
+          {
+            "rank": 5,
+            "brand": "Monty",
+            "model": "V8",
+            "model_year": null,
+            "category": "cargo",
+            "price_eur": 3799.0,
+            "price_source_url": "https://www.nimms-rad.de/news/lastenraeder-unter-5000-euro",
+            "key_specs": {
+              "weight_kg": null,
+              "drivetrain": null,
+              "motor": "BH 1E, 80 Nm",
+              "battery_wh": 540,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": null,
+            "match_score": 76,
+            "why_fits": "Gute Kompromisslösung: ordentliche Motorleistung (80 Nm) und umfangreiches Zubehörangebot; preislich deutlich unter euerem Budget, daher Spielraum für Extras (Verdeck, Kindersitze).",
+            "pros": [
+              "Solider Motor (80 Nm)",
+              "Preislich attraktiv",
+              "Gutes Zubehörangebot"
+            ],
+            "cons": [
+              "Akkukapazität moderat (540 Wh)",
+              "Manche Ausstattungen sind optional und kosten extra"
+            ]
+          }
+        ],
+        "buying_tips": [
+          "Probefahrt mit voller Beladung (zwei Kinder oder entsprechendes Gewicht) in eurer hügeligen Strecke",
+          "Achtet auf Motordrehmoment: für hügelige Städte sind 75–100 Nm empfehlenswert",
+          "Prüft Serienausstattung: Regenverdeck, 5‑Punkt‑Gurte und stabiler Doppelständer sind wichtige Extras",
+          "Fördermöglichkeiten (Kommunal) prüfen — oft gibt es Zuschüsse",
+          "Vergleicht Händlerpreise; die genannten Preise stammen aus redaktionellen Übersichten (UVP)"
+        ],
+        "sources": [
+          "https://www.nimms-rad.de/news/lastenraeder-unter-5000-euro",
+          "https://www.faz.net/kaufkompass/test/die-besten-lastenraeder"
+        ]
+      },
+      "passed": true
+    },
+    {
+      "case": "unvollstaendig",
+      "seconds": 18.3,
+      "output": "ask_user",
+      "error": null,
+      "tool_calls": {},
+      "web_calls": 0,
+      "model_requests": 1,
+      "input_tokens": 3236,
+      "output_tokens": 778,
+      "cost_usd": 0.002,
+      "retries": 0,
+      "bikes": 0,
+      "checks": {
+        "Ausgabetyp": true,
+        "Rückfrage": true
+      },
+      "result": {
+        "question": "Danke, Evaluation — ein paar kurze Fragen, damit ich passende Räder vorschlagen kann:\n\n1) Wofür willst du das Rad hauptsächlich nutzen? (z. B. tägliches Pendeln 15 km, Wochenend-Touren, Schotterwege, Rennrad/Speed, Stadtfahrten)\n2) Maximaler Preis in Euro (Budget)?\n3) Welche Kategorie bevorzugst du, oder ist das egal? (City / Trekking / Gravel / Road / MTB / Cargo / Klapprad / Kinder / keine Präferenz)\n4) Soll es ein E‑Bike sein, ausdrücklich ohne Motor oder offen für beides?\n5) Körpergröße und/oder Schrittlänge in cm (optional — nur nötig, wenn du eine Rahmengröße empfohlen haben möchtest).\n6) Besondere Wünsche oder Anforderungen (z. B. Gepäckträger, Schutzbleche, Riemenantrieb, Tiefeinsteiger, <12 kg, bestimmte Marken, Kindertransport, breite Reifen usw.)",
+        "missing_fields": [
+          "use_case",
+          "budget_eur",
+          "category",
+          "electric",
+          "height_cm",
+          "inseam_cm",
+          "other_wishes"
+        ]
+      },
+      "passed": true
+    }
+  ]
+}

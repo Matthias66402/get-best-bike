@@ -1,0 +1,459 @@
+{
+  "summary": {
+    "runs": 5,
+    "passed_runs": 4,
+    "checks_passed": "26/28",
+    "mean_seconds": 364.68,
+    "mean_web_calls": 11,
+    "mean_model_requests": 8.8,
+    "mean_input_tokens": 132511,
+    "mean_output_tokens": 5562.6,
+    "mean_retries": 0.4,
+    "total_cost_usd": 0.105
+  },
+  "runs": [
+    {
+      "case": "pendler-ebike",
+      "seconds": 232.2,
+      "output": "final_recommendation",
+      "error": null,
+      "tool_calls": {
+        "search_bikes": 9,
+        "research_knowledge": 1,
+        "read_product_page": 2,
+        "recommend_frame_size": 3
+      },
+      "web_calls": 11,
+      "model_requests": 8,
+      "input_tokens": 70730,
+      "output_tokens": 5280,
+      "cost_usd": 0.0183,
+      "retries": 0,
+      "bikes": 3,
+      "checks": {
+        "Ausgabetyp": true,
+        "Rangliste": true,
+        "1-5 Räder": true,
+        "Quellen belegt": true,
+        "Kategorie": true,
+        "Budget": true,
+        "mit Motor": true,
+        "Rahmengröße": true
+      },
+      "result": {
+        "title": "Trekking‑E‑Bike bis 3.500 € für tägliches Pendeln (15 km, teils Schotter)",
+        "summary": "Gesucht wurde ein Trekking‑E‑Bike fürs tägliche Pendeln (15 km pro Strecke), teils Schotter, Budget 3.500 €. Platz 1 (Victoria Tresalo 6) steht vorn, weil es mit 3.499 € genau im Budget liegt und einen großen Akku (600 Wh) für zuverlässige Reichweite bietet.",
+        "requirements": {
+          "use_case": "tägliches Pendeln, 15 km pro Strecke, teils Schotter",
+          "category": "trekking",
+          "electric": true,
+          "budget_eur": 3500.0,
+          "height_cm": 175,
+          "inseam_cm": 82,
+          "other_wishes": []
+        },
+        "ranking": [
+          {
+            "rank": 1,
+            "brand": "Victoria",
+            "model": "Tresalo 6",
+            "model_year": 2026,
+            "category": "trekking",
+            "price_eur": 3499.0,
+            "price_source_url": "https://www.radfahren.de/test-teile/e-trekkingraeder-2026-test",
+            "key_specs": {
+              "weight_kg": null,
+              "drivetrain": null,
+              "motor": null,
+              "battery_wh": 600,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": "L (54 cm)",
+            "match_score": 95,
+            "why_fits": "Preis genau im Budget, Trekkingausrichtung mit solidem Akku (600 Wh) — ideal für tägliche 30 km Gesamtstrecke und Schotterabschnitte; voll ausgestattet für den Alltag.",
+            "pros": [
+              "Genauer Preis im Budget (3.499 €).",
+              "Großer Akku (600 Wh) für zuverlässige Reichweite bei 15 km pro Strecke.",
+              "Trekking‑Ausstattung (für Straße und Schotter) geeignet."
+            ],
+            "cons": [
+              "Herstellerangaben zu Gewicht und Motor wurden in der Quelle nicht detailliert genannt (Deshalb vor Ort prüfen).",
+              "Wenn du sehr sportlich fährst, kann ein noch leichteres Light‑E‑Bike besser passen."
+            ]
+          },
+          {
+            "rank": 2,
+            "brand": "Giant",
+            "model": "Talon E+ EX Gen2",
+            "model_year": 2026,
+            "category": "trekking",
+            "price_eur": 2749.0,
+            "price_source_url": "https://www.radfahren.de/test-teile/e-trekkingraeder-2026-test",
+            "key_specs": {
+              "weight_kg": 24.4,
+              "drivetrain": null,
+              "motor": "Giant SyncDrive (Yamaha)",
+              "battery_wh": 430,
+              "suspension": "Federgabel (frontgefederte Ausführung)",
+              "brakes": null
+            },
+            "frame_size": "L (54 cm)",
+            "match_score": 80,
+            "why_fits": "Deutlich unter Budget und mit Frontfederung gut geeignet für gemischte Strecken mit Schotter; preis/Leistung im Test hervorgehoben.",
+            "pros": [
+              "Gutes Preis‑Leistungs‑Verhältnis (2.749 €).",
+              "Frontfederung dämpft Schotterpassagen.",
+              "Leichter als viele voll ausgestattete Trekking‑SUVs (ca. 24,4 kg)."
+            ],
+            "cons": [
+              "Akku mit 430 Wh ist für 30 km Tagesstrecke etwas knapp und ggf. an der Grenze bei hoher Unterstützungsstufe.",
+              "Im Test als sportiver Tourer mit MTB‑Genen beschrieben — ggf. weniger Gepäckkapazität oder aufrechtere Sitzposition als klassische Trekkingräder."
+            ]
+          },
+          {
+            "rank": 3,
+            "brand": "KOGA",
+            "model": "E-F3 5.0 Mixed",
+            "model_year": 2026,
+            "category": "trekking",
+            "price_eur": 3799.0,
+            "price_source_url": "https://www.radfahren.de/test-teile/e-trekkingraeder-2026-test",
+            "key_specs": {
+              "weight_kg": 22.2,
+              "drivetrain": null,
+              "motor": null,
+              "battery_wh": 400,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": "L (54 cm)",
+            "match_score": 75,
+            "why_fits": "Sehr leicht und sportlich – gut für Pendeln und schnelle Abschnitte auf Asphalt/Schotter. Geringes Gewicht hilft beim Handling und Beschleunigen.",
+            "pros": [
+              "Relativ leichtes Rad (ca. 22,2 kg) — agil im Stadtverkehr.",
+              "Sportliche Abstimmung für schnelle Pendelstrecken auf Asphalt und Schotter."
+            ],
+            "cons": [
+              "Preis liegt bei 3.799 € (ca. 8,5 % über deinem Budget) — zulässig, aber ein Kompromiss.  ",
+              "Akku 400 Wh kann für 30 km tägliche Strecke knapp sein; Reichweite prüfen oder Range Extender einplanen."
+            ]
+          }
+        ],
+        "buying_tips": [
+          "Mach unbedingt eine Probefahrt (Sitzposition, Handling auf Schotter prüfen).",
+          "Für tägliche 15 km pro Strecke empfehle ich mindestens ~500–600 Wh Akku oder die Möglichkeit eines Range Extenders/Arbeitsladepunkts; das Victoria (600 Wh) ist dafür am geeignetsten.",
+          "Vergleiche Vorjahresmodelle oder Händlerangebote — oft findest du Ausstattungsversionen unter Budget.",
+          "Achte auf reale, voll ausgestattete Test‑/Produktseiten (Gepäckträger, Licht, Schutzbleche) — nicht nur Base‑Modelle.",
+          "Beim Kauf: Rahmengröße anprobieren (L / 54 cm laut Faustformel bei 175 cm / 82 cm Schrittlänge passt gut)."
+        ],
+        "sources": [
+          "https://www.radfahren.de/test-teile/e-trekkingraeder-2026-test",
+          "https://www.bike-x.de/e-bike/news/e-bike-test-das-sind-die-besten-e-bikes-des-jahres"
+        ]
+      },
+      "passed": true
+    },
+    {
+      "case": "gravel-ohne-motor",
+      "seconds": 890.6,
+      "output": "final_recommendation",
+      "error": null,
+      "tool_calls": {
+        "search_bikes": 21,
+        "research_knowledge": 1,
+        "read_product_page": 6,
+        "recommend_frame_size": 3
+      },
+      "web_calls": 27,
+      "model_requests": 19,
+      "input_tokens": 379121,
+      "output_tokens": 10902,
+      "cost_usd": 0.0451,
+      "retries": 1,
+      "bikes": 3,
+      "checks": {
+        "Ausgabetyp": true,
+        "Rangliste": true,
+        "1-5 Räder": true,
+        "Quellen belegt": true,
+        "Kategorie": true,
+        "Budget": true,
+        "ohne Motor": true,
+        "Rahmengröße": true
+      },
+      "result": {
+        "title": "Gravelbike (ohne Motor) bis 2.000 € für Feierabend & Bikepacking",
+        "summary": "Gesucht war ein nicht‑motorisiertes Gravelbike bis 2.000 € für Feierabendrunden und gelegentliches Bikepacking (Körpergröße 182 cm). Platz 1 ist das Canyon Grizl AL: bikepacking‑tauglich, viele Montagepunkte und sehr gutes Preis‑/Ausstattungsangebot. Platz 2 ist das Canyon Grizl CF (höheres Ausstattungsniveau, noch innerhalb Budgetgrenze), Platz 3 das sehr preiswerte Giant Revolt 2.",
+        "requirements": {
+          "use_case": "Feierabendrunden und gelegentliches Bikepacking",
+          "category": "gravel",
+          "electric": false,
+          "budget_eur": 2000.0,
+          "height_cm": 182,
+          "inseam_cm": null,
+          "other_wishes": [
+            "geeignet für Gepäck/Gepäckträger und Schutzbleche",
+            "robust / allroad-tauglich"
+          ]
+        },
+        "ranking": [
+          {
+            "rank": 1,
+            "brand": "Canyon",
+            "model": "Grizl AL",
+            "model_year": null,
+            "category": "gravel",
+            "price_eur": 1299.0,
+            "price_source_url": "https://www.canyon.com/en-de/gravel-bikes/adventure/grizl",
+            "key_specs": {
+              "weight_kg": 10.43,
+              "drivetrain": null,
+              "motor": null,
+              "battery_wh": null,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": "L (57 cm)",
+            "match_score": 95,
+            "why_fits": "Grizl AL ist explizit als bikepacking‑freundliche Plattform konzipiert (große Reifenfreiheit, viele Montagepunkte, rack‑ und Schutzblech‑Optionen) und liegt deutlich unter deinem Budget.",
+            "pros": [
+              "Deutlich bikepacking‑orientierte Ausstattung (zahlreiche Montagepunkte, kompatibel mit Gepäckträgern) — laut Herstellerseite",
+              "Sehr große Reifenfreiheit (bis 54 mm) — vielseitig für Feierabendrunden und rauere Wege",
+              "Gutes Preis‑Leistungs‑Verhältnis (Startpreis in EU: 1.299 €)"
+            ],
+            "cons": [
+              "Basis‑Ausstattung ist funktional, aber in Einzelfällen (z. B. Laufräder, Reifen) für schwere Bikepacking‑Touren aufzurüsten",
+              "Falls du sehr leichtes Gewicht willst: AL‑Version ist schwerer als CF (siehe CF weiter unten)"
+            ]
+          },
+          {
+            "rank": 2,
+            "brand": "Canyon",
+            "model": "Grizl CF",
+            "model_year": null,
+            "category": "gravel",
+            "price_eur": 1999.0,
+            "price_source_url": "https://www.canyon.com/en-de/gravel-bikes/adventure/grizl",
+            "key_specs": {
+              "weight_kg": 8.9,
+              "drivetrain": null,
+              "motor": null,
+              "battery_wh": null,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": "L (57 cm)",
+            "match_score": 92,
+            "why_fits": "Grizl CF bietet die gleichen bikepacking‑fähigen Features wie die AL‑Version, ist aber leichter und mit höherem Ausstattungs‑/Komponentenpotenzial — passt sehr gut, wenn du etwas besseres Setup willst und das Budget ausreizbar ist.",
+            "pros": [
+              "Leichter (laut Herstellerseite: ab 8,9 kg) — vorteilhaft für längere Touren",
+              "Interner Stauraum (CF Down‑Tube Storage) und viele Montageoptionen, sehr bikepacking‑tauglich",
+              "CF‑Version hat bessere Optionen für hochwertigere Komponenten"
+            ],
+            "cons": [
+              "Preis liegt am oberen Ende deines Budgets (1999 €) — nur knapp innerhalb der Grenze",
+              "Höheres Ausstattungsniveau bedeutet ggf. höhere Reparaturkosten/kompliziertere Teile bei Bedarf"
+            ]
+          },
+          {
+            "rank": 3,
+            "brand": "Giant",
+            "model": "Revolt 2",
+            "model_year": 2026,
+            "category": "gravel",
+            "price_eur": 1099.0,
+            "price_source_url": "https://radwelt.shop/shop/giant-revolt-2-icicle-white-gravelbike",
+            "key_specs": {
+              "weight_kg": null,
+              "drivetrain": null,
+              "motor": null,
+              "battery_wh": null,
+              "suspension": null,
+              "brakes": null
+            },
+            "frame_size": "L (57 cm)",
+            "match_score": 88,
+            "why_fits": "Sehr preiswerter Allround‑Gravel mit Carbon‑Gabel und Anpassungsmöglichkeiten (Flip‑Chip) — gute Basis für Feierabendtouren und leichtes Bikepacking, besonders wenn du weniger ausgeben willst.",
+            "pros": [
+              "Sehr guter Preis (Angebot: 1.099 € bei Händlerseite)",
+              "Carbon‑Gabel für Komfort, Flip‑Chip für Anpassung von Handling und Reifenfreiheit (nützlich beim Beladen)",
+              "Gute Basis, um nachträglich robuste Reifen/Laufräder für Bikepacking nachzurüsten"
+            ],
+            "cons": [
+              "In dieser Preisklasse meist Basiskomponenten — für ernstes Bikepacking evtl. einzelne Upgrades sinnvoll",
+              "Exakte Ausstattung kann bei Händlern/Angeboten variieren — Spezifikationen vorher prüfen"
+            ]
+          }
+        ],
+        "buying_tips": [
+          "Probefahrt mit Gepäck: Leih dir Taschen oder befestige eine Tragtasche für eine kurze Runde, um Sitzposition und Handling beladen zu prüfen.",
+          "Achte auf Reifenfreiheit: mindestens 40–45 mm für gemischten Untergrund, 50+ mm wenn du oft raueren Schotter fährst.",
+          "Prüfe Montagepunkte: Vorne (Gabel), Mitte (Rahmen) und hinten (Sitzstreben/Ösen) für Gepäckträger und Flaschenhalter.",
+          "Vorjahresmodelle und Händlerangebote vergleichen — oft kannst du bei gleichem Rahmen viel Geld sparen und gezielt in Reifen/Laufräder investieren."
+        ],
+        "sources": [
+          "https://www.canyon.com/en-de/gravel-bikes/adventure/grizl",
+          "https://radwelt.shop/shop/giant-revolt-2-icicle-white-gravelbike",
+          "https://www.rennrad-news.de/news/gravelbikes-2000-euro-test-vergleich",
+          "https://www.bikeradar.com/advice/buyers-guides/best-gravel-bikes-under-2000",
+          "https://www.salsacycles.com/collections/journeyer"
+        ]
+      },
+      "passed": true
+    },
+    {
+      "case": "kinderrad",
+      "seconds": 633.3,
+      "output": "final_recommendation",
+      "error": null,
+      "tool_calls": {
+        "search_bikes": 11,
+        "research_knowledge": 1,
+        "read_product_page": 3,
+        "recommend_frame_size": 2
+      },
+      "web_calls": 14,
+      "model_requests": 14,
+      "input_tokens": 205176,
+      "output_tokens": 9708,
+      "cost_usd": 0.0362,
+      "retries": 1,
+      "bikes": 1,
+      "checks": {
+        "Ausgabetyp": true,
+        "Rangliste": true,
+        "1-5 Räder": true,
+        "Quellen belegt": true,
+        "Kategorie": true,
+        "Budget": true,
+        "ohne Motor": true,
+        "Rahmengröße": true
+      },
+      "result": {
+        "title": "Leichtes Kinderrad bis 500 € (118 cm)",
+        "summary": "Du suchst ein leichtes Kinderrad für deine Tochter (118 cm) bis max. 500 €. Platz 1 ist das woom GO 4: sehr leicht, speziell kindgerecht konstruiert und passend für 115–130 cm — es ist zwar knapp über dem Budget, erfüllt aber am besten das Gewicht- und Bedienungswunsch.",
+        "requirements": {
+          "use_case": "leichtes Kinderrad für Tochter, 118 cm, maximal 500 €",
+          "category": "kids",
+          "electric": false,
+          "budget_eur": 500.0,
+          "height_cm": 118,
+          "inseam_cm": null,
+          "other_wishes": [
+            "leicht",
+            "niedriger Einstieg"
+          ]
+        },
+        "ranking": [
+          {
+            "rank": 1,
+            "brand": "woom",
+            "model": "woom GO 4",
+            "model_year": null,
+            "category": "kids",
+            "price_eur": 512.0,
+            "price_source_url": "https://woom.com/en_INT/bikes/go-4",
+            "key_specs": {
+              "weight_kg": 7.8,
+              "drivetrain": "7-speed (microSHIFT Ds45 twist shifter, microSHIFT M21SS derailleur)",
+              "motor": null,
+              "battery_wh": null,
+              "suspension": "starr (Aluminiumgabel)",
+              "brakes": "mini V‑brakes (kindgerechte Hebel)"
+            },
+            "frame_size": "20\"",
+            "match_score": 92,
+            "why_fits": "Speziell für Kinder entwickelt (Herstellerangabe: Höhe 115–130 cm), sehr leicht (7,8 kg) und mit kindgerechten Bremshebeln sowie einer leicht zu bedienenden 7‑Gang‑Schaltung — ideal für eine 118 cm große Fahrerin.",
+            "pros": [
+              "Sehr geringes Gewicht (7,8 kg) — deutlich spürbar beim Fahren und Handling",
+              "Kindgerechte Ergonomie (kleine Bremshebel, ABC‑Markierungen zur Feinjustage)",
+              "Hochwertige, kindgerecht abgestimmte Komponenten und einfache Wartung"
+            ],
+            "cons": [
+              "Preis €512 liegt knapp über deinem Budget (≈2,4 % über 500 €) — aber innerhalb der tolerierten +10 %; gegebenenfalls Zubehör kostet extra (Schutzbleche, Ständer)"
+            ]
+          }
+        ],
+        "buying_tips": [
+          "Mach eine Probefahrt: Achte darauf, dass dein Kind mit beiden Fußballen den Boden erreicht und die Bremshebel gut erreichbar sind.",
+          "Wenn das Budget strikt 500 € ist: Schau nach Puky-, Decathlon- oder Vorjahresmodellen (gebraucht oder Auslaufmodelle) — sie sind günstiger, aber meist schwerer.",
+          "Achte auf notwendige Straßen-Ausstattung (Licht, Klingel, Reflektoren); bei woom sind manche Extras nur im Bundle enthalten.",
+          "Beim Händler nach Einlagerungs- oder Einstellservice fragen (Sattel-/Lenkereinstellung für die richtige Reichweite)."
+        ],
+        "sources": [
+          "https://woom.com/en_INT/bikes/go-4",
+          "Fahrradkategorien im Überblick (interne Wissensbasis)",
+          "Die richtige Rahmengröße (interne Wissensbasis)"
+        ]
+      },
+      "passed": true
+    },
+    {
+      "case": "lastenrad",
+      "seconds": 56.2,
+      "output": "ask_user",
+      "error": null,
+      "tool_calls": {
+        "search_bikes": 3,
+        "research_knowledge": 1
+      },
+      "web_calls": 3,
+      "model_requests": 2,
+      "input_tokens": 5051,
+      "output_tokens": 1078,
+      "cost_usd": 0.0031,
+      "retries": 0,
+      "bikes": 0,
+      "checks": {
+        "Ausgabetyp": false,
+        "Rangliste": false
+      },
+      "result": {
+        "question": "Danke—kurze Rückfragen, damit ich passende Modelle finde:\n1) Körpergröße oder Schrittlänge der Hauptfahrerin / des Fahrers (oder beides)?\n2) Alter und ungefähres Gewicht der beiden Kinder?\n3) Wie viele Kilometer fahrt ihr typischerweise pro Tag mit voller Beladung (einfach/pro Weg)?\n4) Wie ausgeprägt sind die Hügel (kurze steile Anstiege vs. lange Anstiege; ggf. Beispiel mit Höhenmetern)?\n5) Bevorzugt ihr ein zweirädriges Frontlader-Lastenrad (wendiger) oder ein dreirädriges/Longtail (stabiler)?\n6) Braucht ihr ein festes Verdeck / Tür für die Ladebox (bei Wind/Regen)?\n7) Muss der Preis strikt ≤ 6.000 € sein oder sind ~10 % Mehrpreis (bis ≈ 6.600 €) akzeptabel?\n\nWelche Punkte fehlen oder sollen wir noch beachten?",
+        "missing_fields": [
+          "height_cm",
+          "inseam_cm",
+          "children_ages_weights",
+          "daily_distance_km",
+          "hill_description",
+          "preferred_type",
+          "wetterschutz",
+          "budget_flexibility"
+        ]
+      },
+      "passed": false
+    },
+    {
+      "case": "unvollstaendig",
+      "seconds": 11.1,
+      "output": "ask_user",
+      "error": null,
+      "tool_calls": {},
+      "web_calls": 0,
+      "model_requests": 1,
+      "input_tokens": 2477,
+      "output_tokens": 845,
+      "cost_usd": 0.002,
+      "retries": 0,
+      "bikes": 0,
+      "checks": {
+        "Ausgabetyp": true,
+        "Rückfrage": true
+      },
+      "result": {
+        "question": "Gern — damit ich dir passende Räder vorschlagen kann, sag mir bitte kurz:\n\n1) Wofür willst du das Rad hauptsächlich nutzen? (z. B. tägliches Pendeln 15 km, Wochenendtouren, Gelände/Trails, Einkauf/Alltag)\n2) Maximaler Preis (Budget in Euro)?\n3) Bevorzugte Kategorie oder Typ (City, Trekking, Gravel, Rennrad, MTB, E‑Bike, Lastenrad, Klapprad, offen)?\n4) Soll es ein E‑Bike sein, auf keinen Fall ein E‑Bike, oder ist das egal?\n5) Deine Körpergröße in cm und, falls bekannt, Schrittlänge in cm (für Rahmengröße; optional).\n6) Besondere Wünsche (z. B. Riemenantrieb, Nabenschaltung, Tiefeinsteiger, Gepäckträger, Schutzbleche, geringes Gewicht, Kindersitz, bestimmter Motor, etc.)",
+        "missing_fields": [
+          "use_case",
+          "budget_eur",
+          "category",
+          "electric",
+          "height_cm",
+          "inseam_cm",
+          "other_wishes"
+        ]
+      },
+      "passed": true
+    }
+  ]
+}

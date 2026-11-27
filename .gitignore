@@ -8,8 +8,5 @@ frontend/dist/
 .idea/
 *.tsbuildinfo
 
-# Evaluationsberichte (lokale Messläufe)
-backend/evaluation-reports/
-
 # Lokale Notizen und Beschreibungen (nicht versioniert)
 descriptions/
